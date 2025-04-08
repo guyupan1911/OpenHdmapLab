@@ -122,3 +122,5 @@ ckpts/
 *.pth
 *.py~
 *.sh~
+
+visualization/

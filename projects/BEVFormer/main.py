@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from mmengine.config import Config
 
 from datasets import CustomNuScenesDataset
+from visualization import visualization_data_sample
 
 def parse_args():
     parser = argparse.ArgumentParser(description='DETR3D')
@@ -25,11 +26,14 @@ def main():
 
     # build dataset
     dataset = CustomNuScenesDataset(**cfg.data.val)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+    from nuscenes.nuscenes import NuScenes
+    nusc = NuScenes(version='v1.0-mini', dataroot='data/nuscenes', verbose=True)
 
     for idx, data_batch in enumerate(dataloader):
-        print(data_batch['img'].shape)
-        return
+        visualization_data_sample(nusc, data_batch)
+        
 
 if __name__=='__main__':
     main()
