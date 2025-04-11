@@ -40,6 +40,8 @@ class CustomNuScenesDataset(Dataset):
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
         self.with_velocity = with_velocity
+        print(f'test mode: {test_mode}')
+
         self.test_mode = test_mode
         self.modality = modality
         self.filter_empty_gt = filter_empty_gt
@@ -207,13 +209,10 @@ class CustomNuScenesDataset(Dataset):
                 prev_pos = copy.deepcopy(tmp_pos)
                 prev_angle = copy.deepcopy(tmp_angle)
 
-        print(imgs_list[0][0].shape)
-
         queue[-1]['img'] = torch.stack(imgs_list)
         queue[-1]['img_metas'] = metas_map
         queue = queue[-1]
         return queue
-
 
 
     def prepare_train_data(self, index):
@@ -229,11 +228,11 @@ class CustomNuScenesDataset(Dataset):
                 return None
             self.pre_pipeline(input_dict)
             for func in self.pipeline:
-                example = func(input_dict)
+                input_dict = func(input_dict)
             # print(f'example: {example.keys()}')
             # if self.filter_empty_gt and (example is None or ~(example['gt_labels_3d']._data != -1).any()):
             #     return None
-            queue.append(example)
+            queue.append(input_dict)
         # print(f'queue length: {len(queue)}')
         return self.union2one(queue)
 
@@ -241,8 +240,10 @@ class CustomNuScenesDataset(Dataset):
     def prepare_test_data(self, index):
         input_dict = self.get_data_info(index)
         self.pre_pipeline(input_dict)
-        example = self.pipeline(input_dict)
+        for func in self.pipeline:
+            input_dict = func(input_dict)
         # return example
+        input_dict['img'] = torch.stack(input_dict['img'])
         return input_dict
 
 

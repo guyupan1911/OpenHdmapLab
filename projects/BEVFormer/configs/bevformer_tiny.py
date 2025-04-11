@@ -1,3 +1,12 @@
+# BEvFormer-tiny consumes at lease 6700M GPU memory
+# compared to bevformer_base, bevformer_tiny has
+# smaller backbone: R101-DCN -> R50
+# smaller BEV: 200*200 -> 50*50
+# less encoder layers: 6 -> 3
+# smaller input size: 1600*900 -> 800*450
+# multi-scale feautres -> single scale features (C5)
+
+
 _base_ = [
     # 'datasets/custom_nus-3d.py',
     '_base_/default_runtime.py'
@@ -13,16 +22,15 @@ voxel_size = [0.2, 0.2, 8]
 
 
 
+
 img_norm_cfg = dict(
-    mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
-
-metainfo = dict(classes=class_names)
-
 
 input_modality = dict(
     use_lidar=False,
@@ -34,33 +42,32 @@ input_modality = dict(
 _dim_ = 256
 _pos_dim_ = _dim_//2
 _ffn_dim_ = _dim_*2
-_num_levels_ = 4
-bev_h_ = 200
-bev_w_ = 200
-queue_length = 4 # each sequence contains `queue_length` frames.
+_num_levels_ = 1
+bev_h_ = 50
+bev_w_ = 50
+queue_length = 3 # each sequence contains `queue_length` frames.
 
 model = dict(
     type='BEVFormer',
     use_grid_mask=True,
     video_test_mode=True,
+    pretrained=dict(img='torchvision://resnet50'),
     img_backbone=dict(
         type='mmdet.ResNet',
-        depth=101,
+        depth=50,
         num_stages=4,
-        out_indices=(1, 2, 3),
+        out_indices=(3,),
         frozen_stages=1,
-        norm_cfg=dict(type='BN2d', requires_grad=False),
+        norm_cfg=dict(type='BN', requires_grad=False),
         norm_eval=True,
-        style='caffe',
-        dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False), # original DCNv2 will print log when perform load_state_dict
-        stage_with_dcn=(False, False, True, True)),
+        style='pytorch'),
     img_neck=dict(
         type='mmdet.FPN',
-        in_channels=[512, 1024, 2048],
+        in_channels=[2048],
         out_channels=_dim_,
         start_level=0,
         add_extra_convs='on_output',
-        num_outs=4,
+        num_outs=_num_levels_,
         relu_before_extra_convs=True),
     pts_bbox_head=dict(
         type='BEVFormerHead',
@@ -80,7 +87,7 @@ model = dict(
             embed_dims=_dim_,
             encoder=dict(
                 type='BEVFormerEncoder',
-                num_layers=6,
+                num_layers=3,
                 pc_range=point_cloud_range,
                 num_points_in_pillar=4,
                 return_intermediate=False,
@@ -174,21 +181,24 @@ train_pipeline = [
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
+    dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='CustomCollect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img'])
 ]
 
 test_pipeline = [
-    dict(type='mmdet3d.LoadMultiViewImageFromFiles', to_float32=True),
+    # dict(type='LoadMultiViewImageFromFiles', to_float32=True),
     # dict(type='NormalizeMultiviewImage', **img_norm_cfg),
-    # dict(type='PadMultiViewImage', size_divisor=32),
+   
     # dict(
     #     type='MultiScaleFlipAug3D',
     #     img_scale=(1600, 900),
     #     pts_scale_ratio=1,
     #     flip=False,
     #     transforms=[
+    #         dict(type='RandomScaleImageMultiViewImage', scales=[0.5]),
+    #         dict(type='PadMultiViewImage', size_divisor=32),
     #         dict(
     #             type='DefaultFormatBundle3D',
     #             class_names=class_names,
@@ -218,6 +228,7 @@ data = dict(
              data_root=data_root,
              ann_file='nuscenes_infos_temporal_val.pkl',
              pipeline=test_pipeline,  bev_size=(bev_h_, bev_w_),
+             test_mode=True,
              classes=class_names, modality=input_modality, samples_per_gpu=1),
     test=dict(type=dataset_type,
               data_root=data_root,
@@ -249,7 +260,7 @@ total_epochs = 24
 evaluation = dict(interval=1, pipeline=test_pipeline)
 
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
-load_from = 'ckpts/r101_dcn_fcos3d_pretrain.pth'
+
 log_config = dict(
     interval=50,
     hooks=[
