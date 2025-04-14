@@ -17,6 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='DETR3D')
     parser.add_argument('config')
     parser.add_argument('--checkpoint')
+    parser.add_argument('--mode', choices=['train', 'test'], default='test')
 
     args = parser.parse_args()
     return args
@@ -60,32 +61,31 @@ def main():
     # print(f'cfg: {cfg}')
 
 
+    # build visulizer
+    visualizer = Det3DLocalVisualizer()
+
     # build dataset
     dataset = DATASETS.build(cfg.val_dataloader.dataset)
-    dataloader = DataLoader(dataset, batch_size=5, collate_fn=pseudo_collate)
+    dataloader = DataLoader(dataset, batch_size=5, collate_fn=pseudo_collate, shuffle=True)
 
     # build model
     model = DETR3D(**cfg.model)
     model.to('cuda')
-    model.eval()
-    # print(model)    
 
-    # load checkpoint
-    checkpoint = _load_checkpoint(args.checkpoint)
-    checkpoint = _load_checkpoint_to_model(model, checkpoint, strict=True)
+    if args.mode == 'test':
+        model.eval()
 
-    # visulizer
-    # visualizer_cfg = cfg.visualizer
-    # visualizer_cfg.setdefault('name', 'DETR3D')
-    # visualizer_cfg.setdefault('save_dir', 'results')
-    # visualizer = VISUALIZERS.build(visualizer_cfg)
-    visualizer = Det3DLocalVisualizer()
+        # load checkpoint
+        checkpoint = _load_checkpoint(args.checkpoint)
+        checkpoint = _load_checkpoint_to_model(model, checkpoint, strict=True)
 
-    with torch.no_grad():
-        for idx, data_batch in enumerate(dataloader):
-            results = model.val_step(data_batch)
-            visualization(visualizer, results[0])
-            # return
+        # run test
+        with torch.no_grad():
+            for idx, data_batch in enumerate(dataloader):
+                results = model.val_step(data_batch)
+                visualization(visualizer, results[0])
+                # return
+
 
 if __name__=='__main__':
     main()
