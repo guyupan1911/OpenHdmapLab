@@ -66,6 +66,20 @@ def main():
 
     # build dataset
     dataset = DATASETS.build(cfg.val_dataloader.dataset)
+    # print(f'dataset: {dataset[0].keys()}')
+    # print(dataset[0]['inputs']['img'].shape)
+    # print(dataset[0]['data_samples'].keys())
+    # print(f'eval_ann_info: {dataset[0]["data_samples"].eval_ann_info.keys()}')
+    # print(f'gt_bboxes_labels: {dataset[0]["data_samples"].eval_ann_info["gt_bboxes_labels"]})')
+    # print(f'gt_bboxes_3d: {dataset[0]["data_samples"].eval_ann_info["gt_bboxes_3d"]})')
+    # print(f'bbox_3d_isvalid: {dataset[0]["data_samples"].eval_ann_info["bbox_3d_isvalid"]})')
+    # print(f'gt_labels_3d: {dataset[0]["data_samples"].eval_ann_info["gt_labels_3d"]})')
+    # print(f'num_lidar_pts: {dataset[0]["data_samples"].eval_ann_info["num_lidar_pts"]})')
+    # print(f'num_radar_pts: {dataset[0]["data_samples"].eval_ann_info["num_radar_pts"]})')
+    # print(f'velocities: {dataset[0]["data_samples"].eval_ann_info["velocities"]})')
+    # print(f'instances: {dataset[0]["data_samples"].eval_ann_info["instances"][0]})')
+
+
     dataloader = DataLoader(dataset, batch_size=5, collate_fn=pseudo_collate, shuffle=True)
 
     # build model
@@ -84,7 +98,14 @@ def main():
             for idx, data_batch in enumerate(dataloader):
                 results = model.val_step(data_batch)
                 visualization(visualizer, results[0])
-                # return
+                return
+
+    elif args.mode == 'train':
+        model.train()
+
+        # run train
+        for idx, data_batch in  enumerate(data_loader):
+            outputs = model.train_step(data_batch, optim_wrapper)
 
 
 if __name__=='__main__':

@@ -52,19 +52,34 @@ class Detr3DTransformer(nn.Module):
     
 
     def forward(self, mlvl_feats, query_embed, reg_branches=None, **kwargs):
-
+        """
+            Args:
+                mlvl_feats: multi_level image features. list of Tensor, each one
+                    is (bs, num_cams, embed_dims, H, W)
+                query_enbed: torch.Tensor (num_query, embed_dims * 2)
+            Returns:
+                inter_states: torch.Tensor (num_query, bs, C)
+                init_reference_out: torch.Tensor (bs, num_query, 3)
+        """
         assert query_embed is not None
         bs = mlvl_feats[0].size(0)
+        
         query_pos, query = torch.split(query_embed, self.embed_dims, dim=1)
         query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)  # [bs,num_q,c]
         query = query.unsqueeze(0).expand(bs, -1, -1)  # [bs,num_q,c]
+        
+        # generate reference points from query_positional_embedding
+        # (bs, num_query, 3)
         reference_points = self.reference_points(query_pos)
+        # rescale x, y, z to (0, 1)
         reference_points = reference_points.sigmoid()
         init_reference_out = reference_points
 
         # decoder
+        # -> (num_query, bs, C)
         query = query.permute(1, 0, 2)
         query_pos = query_pos.permute(1, 0, 2)
+        
         inter_states, inter_references = self.decoder(
             query=query,
             key=None,
@@ -84,7 +99,7 @@ class Detr3DTransformerDecoder(nn.Module):
                  transformerlayers=None,
                  return_intermediate=False,
                  **kwargs):
-        print(f'transformerlayers: {transformerlayers}')
+        # print(f'transformerlayers: {transformerlayers}')
 
         super().__init__()
         self.num_layers = num_layers
@@ -101,11 +116,21 @@ class Detr3DTransformerDecoder(nn.Module):
 
     def forward(self,
                 query,
-                *args,
+                key,
+                value,
+                query_pos,
                 reference_points=None,
                 reg_branches=None,
                 **kwargs):
-        
+        """
+            Args:
+                query: torch.Tensor (num_query, bs, embed_dims)
+                key: None
+                value: multi_level_image_feats
+                query_pos: torch.Tensor (num_query, bs, embed_dims)
+                reference_points: torch.Tensor (bs, num_query, 3)
+
+        """
         output = query
         intermediate = []
         intermediate_reference_points = []
@@ -113,9 +138,11 @@ class Detr3DTransformerDecoder(nn.Module):
             reference_points_input = reference_points
             output = layer(
                 output,
-                *args,
+                value=value,
+                query_pos=query_pos,
                 reference_points=reference_points,
                 **kwargs)
+            # (num_query, bs, embed_dims) -> (bs, num_query, embed_dims)
             output = output.permute(1, 0, 2)
             if reg_branches is not None:
                 tmp = reg_branches[lid](output)
@@ -132,6 +159,7 @@ class Detr3DTransformerDecoder(nn.Module):
 
                 reference_points = new_reference_points.detach()
 
+            # -> (num_query, bs, embed_dims)
             output = output.permute(1, 0, 2)
             if self.return_intermediate:
                 intermediate.append(output)
@@ -189,7 +217,7 @@ class DetrTransformerDecoderLayer(nn.Module):
         self.num_attn = num_attn
         self.operation_order = operation_order
         self.norm_cfg = norm_cfg
-        self.pre_norm = operation_order[0] == 'norm'
+        self.pre_norm = operation_order[0] == 'norm' # False
         
         # build attentions
         self.attentions = nn.ModuleList()
@@ -231,10 +259,20 @@ class DetrTransformerDecoderLayer(nn.Module):
                 value=None,
                 query_pos=None,
                 key_pos=None,
+                reference_points=None,
                 attn_masks=None,
                 query_key_padding_mask=None,
                 key_padding_mask=None,
                 **kwargs):
+        """
+            Args:
+                query: torch.Tensor (num_query, bs, embed_dims)
+                value: mlvl_feats
+                query_pos: torch.Tensor (num_query, bs, embed_dims)
+                reference_points: (bs, num_query, 3)
+            Return:
+                torch.Tensor (num_query, bs, embed_dims)
+        """
         norm_index = 0
         attn_index = 0
         ffn_index = 0
@@ -269,13 +307,14 @@ class DetrTransformerDecoderLayer(nn.Module):
                 norm_index += 1
             
             elif layer == 'cross_attn':
-                query = self.attentions[norm_index](
+                query = self.attentions[attn_index](
                     query,
                     key,
                     value,
                     identity if self.pre_norm else None,
                     query_pos=query_pos,
                     key_pos=key_pos,
+                    reference_points=reference_points,
                     attn_mask=attn_masks[attn_index],
                     key_padding_mask=key_padding_mask,
                     **kwargs)
@@ -348,15 +387,13 @@ class Detr3DCrossAtten(nn.Module):
         Args:
             query (Tensor): Query of Transformer with shape
                 (num_query, bs, embed_dims).
-            key (Tensor): The key tensor with shape
-                `(num_key, bs, embed_dims)`.
+            key None
             value (List[Tensor]): Image features from
                 different level. Each element has shape
                 (B, N, C, H_lvl, W_lvl).
-            residual (Tensor): The tensor used for addition, with the
-                same shape as `x`. Default None. If None, `x` will be used.
+            residual None
             query_pos (Tensor): The positional encoding for `query`.
-                Default: None.
+                (num_query, bs, embed_dims)
             reference_points (Tensor): The normalized 3D reference
                 points with shape (bs, num_query, 3)
         Returns:
@@ -372,24 +409,45 @@ class Detr3DCrossAtten(nn.Module):
         if query_pos is not None:
             query = query + query_pos
 
+        # -> (bs, num_query, embed_dims)
         query = query.permute(1, 0, 2)
 
         bs, num_query, _ = query.size()
 
+        # (bs, num_query, num_cams * num_levels * num_points) ->
+        # (bs, 1, num_query, num_cams, num_points, num_levels)
         attention_weights = self.attention_weights(query).view(
             bs, 1, num_query, self.num_cams, self.num_points, self.num_levels)
+        
         reference_points_3d, output, mask = feature_sampling(
             value, reference_points, self.pc_range, kwargs['img_metas'])
+        
+        # (bs, C, num_query, num_cam, 1, 4)
         output = torch.nan_to_num(output)
+
+        # (bs, 1, num_query, num_cam, 1, 1)
         mask = torch.nan_to_num(mask)
+
+        # (bs, 1, num_query, num_cam, 1, 4)
         attention_weights = attention_weights.sigmoid() * mask
+
+        # (bs, C, num_query, num_cam, 1, 4)
         output = output * attention_weights
+
+        # -> (bs, C, num_query)
         output = output.sum(-1).sum(-1).sum(-1)
+
+        # -> (num_query, bs, C)
         output = output.permute(2, 0, 1)
+
         # (num_query, bs, embed_dims)
         output = self.output_proj(output)
+
+        # -> (num_query, bs, embed_dims)
         pos_feat = self.position_encoder(
             inverse_sigmoid(reference_points_3d)).permute(1, 0, 2)
+
+        # return (num_query, bs, embed_dims)
         return self.dropout(output) + inp_residual + pos_feat
 
 
@@ -399,28 +457,20 @@ def feature_sampling(mlvl_feats,
                      img_metas,
                      no_sampling=False):
     """ sample multi-level features by projecting 3D reference points
-            to 2D image
         Args:
-            mlvl_feats (List[Tensor]): Image features from
-                different level. Each element has shape
-                (B, N, C, H_lvl, W_lvl).
-            ref_pt (Tensor): The normalized 3D reference
-                points with shape (bs, num_query, 3)
-            pc_range: perception range of the detector
-            img_metas (list[dict]): Meta information of multiple inputs
-                in a batch, containing `lidar2img`.
-            no_sampling (bool): If set 'True', the function will return
-                2D projected points and mask only.
+            mlvl_feats: list of torch.Tensor, each is (bs, num_cams, C, H, W) 
+            reference_points: torch.Tensor (bs, num_query, 3)
+            pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+        
         Returns:
-            ref_pt_3d (Tensor): A copy of original ref_pt
-            sampled_feats (Tensor): sampled features with shape \
-                (B C num_q N 1 fpn_lvl)
-            mask (Tensor): Determine whether the reference point \
-                has projected outsied of images, with shape \
-                (B 1 num_q N 1 1)
+            ref_pt_3d: reference_points
+            sampled_feats: torch.tensor (bs, C, num_query, num_cam, 1, 4)
+            mask: torch.Tensor (bs, 1, num_query, num_cam, 1, 1)
     """
+    # (bs, num_cam, 4, 4)
     lidar2img = [meta['lidar2img'] for meta in img_metas]
     lidar2img = np.asarray(lidar2img)
+    print(f'lidar2img: {lidar2img.shape}')
     lidar2img = ref_pt.new_tensor(lidar2img)
     ref_pt = ref_pt.clone()
     ref_pt_3d = ref_pt.clone()
@@ -429,6 +479,7 @@ def feature_sampling(mlvl_feats,
     num_cam = lidar2img.size(1)
     eps = 1e-5
 
+    # rescale to real coordinate
     ref_pt[..., 0:1] = \
         ref_pt[..., 0:1] * (pc_range[3] - pc_range[0]) + pc_range[0]  # x
     ref_pt[..., 1:2] = \
@@ -436,19 +487,24 @@ def feature_sampling(mlvl_feats,
     ref_pt[..., 2:3] = \
         ref_pt[..., 2:3] * (pc_range[5] - pc_range[2]) + pc_range[2]  # z
 
-    # (B num_q 3) -> (B num_q 4) -> (B 1 num_q 4) -> (B num_cam num_q 4 1)
+    # (bs, num_query, 3) + (bs, num_query, 1) -> (bs, num_query, 4)
     ref_pt = torch.cat((ref_pt, torch.ones_like(ref_pt[..., :1])), -1)
+    # -> (bs, 1, num_query, 4)
     ref_pt = ref_pt.view(B, 1, num_query, 4)
+    # -> (bs, num_cam, num_query, 4, 1)
     ref_pt = ref_pt.repeat(1, num_cam, 1, 1).unsqueeze(-1)
+    
     # (B num_cam 4 4) -> (B num_cam num_q 4 4)
     lidar2img = lidar2img.view(B, num_cam, 1, 4, 4)\
                          .repeat(1, 1, num_query, 1, 1)
+    
     # (... 4 4) * (... 4 1) -> (B num_cam num_q 4)
     pt_cam = torch.matmul(lidar2img, ref_pt).squeeze(-1)
 
-    # (B num_cam num_q)
+    # (B num_cam num_q, 1)
     z = pt_cam[..., 2:3]
     eps = eps * torch.ones_like(z)
+    
     mask = (z > eps)
     pt_cam = pt_cam[..., 0:2] / torch.maximum(z, eps)  # prevent zero-division
     # padded nuscene image: 928*1600
@@ -480,12 +536,17 @@ def feature_sampling(mlvl_feats,
         B, N, C, H, W = feat.size()
         feat = feat.view(B * N, C, H, W)
         pt_cam_lvl = pt_cam.view(B * N, num_query, 1, 2)
+
+        # (bs * num_cam, C,  num_query, 1)
         sampled_feat = F.grid_sample(feat, pt_cam_lvl)
-        # (B num_cam C num_query 1) -> List of (B C num_q num_cam 1)
+
+        # -> (bs, num_cam, C, num_query, 1)
         sampled_feat = sampled_feat.view(B, N, C, num_query, 1)
+        # -> (bs, C, num_query, num_cam, 1)
         sampled_feat = sampled_feat.permute(0, 2, 3, 1, 4)
         sampled_feats.append(sampled_feat)
 
+    # -> (bs, C, num_query, num_cam, 4)
     sampled_feats = torch.stack(sampled_feats, -1)
     # (B C num_q num_cam fpn_lvl)
     sampled_feats = \

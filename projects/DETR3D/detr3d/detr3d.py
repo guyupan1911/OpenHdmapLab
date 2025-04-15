@@ -11,6 +11,7 @@ from mmdet3d.structures.det3d_data_sample import (ForwardResults,
 from mmdet3d.utils.typing_utils import (OptConfigType, OptInstanceList,
                                         OptMultiConfig)
 from mmengine.structures import InstanceData
+from mmengine.optim import OptimWrapper
 
 from .detr3d_head import DETR3DHead
 from .grid_mask import GridMask
@@ -48,6 +49,14 @@ class DETR3D(nn.Module):
 
     def extract_img_feat(self, img: Tensor,
                          batch_input_metas: List[Dict]) -> List[Tensor]:
+        """
+            Args:
+                img: torch.Tensor (bs, num_cams, C, H, W)
+                batch_input_metas: list of datasample's metainfo
+            Returns:
+                img_feats: multi_level image features
+
+        """
         B = img.size(0)
         if img is not None:
             input_shape = img.shape[-2:]
@@ -72,6 +81,7 @@ class DETR3D(nn.Module):
         for img_feat in img_feats:
             BN, C, H, W = img_feat.size()
             img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W))
+        
         return img_feats_reshaped
 
 
@@ -79,8 +89,14 @@ class DETR3D(nn.Module):
                 inputs: torch.Tensor,
                 data_samples: Optional[list] = None,
                 mode: str = 'tensor'):
+        """
+            Args:
+                inputs: {'imgs'}
+                    imgs: torch.Tensor (bs, num_cams, C, H, W)
+                data_samples: list of Det3DDataSample
+        """
         if mode == 'loss':
-            pass
+            return self.loss(inputs, data_samples)
         elif mode == 'predict':
             return self.predict(inputs, data_samples)
         elif mode == 'tensor':
@@ -88,28 +104,75 @@ class DETR3D(nn.Module):
 
 
     def val_step(self, data: dict):
+        """
+            Args:
+                data: {'data_samnples', 'inputs'}
+                    inputs: {'img'}
+                        img: list of Tensor
+                    data_samples: list of Det3DDataSample
+        """
+  
         data = self.data_preprocessor(data, False)
         results = self(**data, mode='predict')
 
         return results
 
 
+    def train_step(self, data, optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
+        with optim_wrapper.optim_context(self):
+            data = self.data_preprocessor(data, True)
+            losses = self(**data, mode='loss')
+        parsed_losses, log_vars = self.parse_losses(losses)
+        optim_wrapper.update_params(parsed_losses)
+        return log_vars
+
+
+    def loss(self, batch_inputs_dict, batch_data_samples, **kwargs) -> List[Det3DDataSample]:
+        batch_input_metas = [item.metainfo for item in batch_data_samples]
+        batch_input_metas = self.add_lidar2img(batch_input_metas)
+        
+        # extract multi_level image features
+        img_feats = self.extract_img_feat(batch_inputs_dict['imgs'], batch_input_metas)
+
+        #  decoder
+        outs = self.pts_bbox_head(img_feats, batch_input_metas, **kwargs)
+
+        # loss
+        batch_gt_instances_3d = [
+           item.gt_instances_3d for item in batch_data_samples
+        ]
+        loss_inputs = [batch_gt_instances_3d, outs]
+        losses_pts = self.pts_bbox_head.loss_by_feat(*loss_inputs)
+
+        return losses_pts
+
+
     def predict(self,
                 batch_inputs_dict: Dict[str, Optional[Tensor]],
                 batch_data_samples: List[Det3DDataSample],
                 **kwargs):
+        """
+            Args:
+                batch_inputs_dict: {'imgs'}
+                    imgs: torch.Tensor (bs, num_cams, C, H, W
+                batch_data_samples: list of Det3DDataSample
+        """
 
         batch_input_metas = [item.metainfo for item in batch_data_samples]
         batch_input_metas = self.add_lidar2img(batch_input_metas)
         for i in range(len(batch_data_samples)):
             batch_data_samples[i].set_metainfo(batch_input_metas[i])
             # print(batch_data_samples[i].metainfo['lidar2img'])
-        # extract multi-level image features
+        # extract multi-level image features (4)
         img_feats = self.extract_img_feat(batch_inputs_dict['imgs'], batch_input_metas)
 
         # decoder
         outs = self.pts_bbox_head(img_feats, batch_input_metas)
         
+        # ouputs: dict
+        # all_cls_scores: torch.Tensor (num_layers, bs, num_query, classes)
+        # all_bbox_preds: torch.Tensor (num_layers, bs, num_query, codes)
+
         # predict
         results_list_3d = self.pts_bbox_head.predict_by_feat(
             outs, batch_input_metas, **kwargs)

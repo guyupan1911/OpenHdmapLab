@@ -139,7 +139,13 @@ class DETR3DHead(nn.Module):
 
     def forward(self, mlvl_feats: List[Tensor], img_metas: List[Dict],
                 **kwargs) -> Dict[str, Tensor]:
+        """
+            Args:
+                mlvl_feats: multi_level image features 4
+                img_metas: list of metainfo
+        """
 
+        # (num_query, embed_dims*2)
         query_embeds = self.query_embedding.weight
         hs, init_reference, inter_references = self.transformer(
             mlvl_feats,
@@ -147,6 +153,12 @@ class DETR3DHead(nn.Module):
             reg_branches=self.reg_branches if self.with_box_refine else None,
             img_metas=img_metas,
             **kwargs)
+        
+        # hs (num_layers, num_query, bs, C)
+        # init_references (bs, num_query, 3)
+        # inter_references (num_layer, bs, num_query, 3)
+
+        # -> (num_layers, bs, num_query, C)
         hs = hs.permute(0, 2, 1, 3)
         outputs_classes = []
         outputs_coords = []
@@ -157,7 +169,9 @@ class DETR3DHead(nn.Module):
             else:
                 reference = inter_references[lvl - 1]
             reference = inverse_sigmoid(reference)
+            # (bs, num_query, classes)
             outputs_class = self.cls_branches[lvl](hs[lvl])
+            # (bs, num_query, 10)
             tmp = self.reg_branches[lvl](hs[lvl])  # shape: ([B, num_q, 10])
             # TODO: check the shape of reference
             assert reference.shape[-1] == 3
@@ -195,6 +209,13 @@ class DETR3DHead(nn.Module):
                         preds_dicts,
                         img_metas,
                         rescale=False) -> InstanceList:
+        """
+            Args:
+            pred_dicts: dict{'all_cls_scores', 'all_bbox_preds'}
+                all_cls_scores: torch.Tensor (num_layers, bs, num_query, classes)
+                all_bbox_predsL torch.Tensor (num_layers, bs, num_query, codes)
+        """
+
         preds_dicts = self.bbox_coder.decode(preds_dicts)
         num_samples = len(preds_dicts)  # batch size
         ret_list = []
@@ -211,3 +232,36 @@ class DETR3DHead(nn.Module):
             ret_list.append(results)
         return ret_list
 
+
+    def loss_by_feat(self, batch_gt_instances_3d, preds_dicts) -> Dict:
+        all_cls_scores = preds_dicts['all_cls_scores']
+        all_bbox_preds = preds_dicts['all_bbox_preds']
+        enc_cls_preds = preds_dicts['enc_cls_scores']
+        enc_bbox_preds = preds_dicts['enc_bbox_preds']
+
+        num_dec_layers = len(all_cls_scores)
+        batch_gt_instances_3d_list = [
+           batch_gt_instances_3d for _ in range(num_dec_layers)
+        ]
+        losses_cls, losses_bbox = multi_apply(self.loss_by_feat_single,
+                                              all_cls_scores, all_bbox_preds,
+                                              batch_gt_instances_3d_list)
+        
+        loss_dict = dict()
+
+        if enc_cls_scores is not None:
+            enc_loss_cls, enc_losses_bbox = self.loss_by_feat_single(
+                enc_cls_scores, enc_bbox_preds, batch_gt_instances_3d_list)
+            loss_dict['enc_loss_cls'] = enc_loss_cls
+            loss_dict['enc_loss_bbox'] = enc_losses_bbox
+
+        loss_dict['loss_cls'] = losses_cls[-1]
+        loss_dict['loss_bbox'] = losses_bbox[-1]
+
+
+        num_dec_layers = 0
+        for loss_cls_i, loss_bbox_i in zip(losses_cls[:-1], losses_bbox[:-1]):
+            loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
+            loss_dict[f'd{num_dec_layer}.loss_bbox'] = loss_bbox_i
+            num_dec_layer += 1
+        return loss_dict
