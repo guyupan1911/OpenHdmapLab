@@ -123,4 +123,5 @@ ckpts/
 *.py~
 *.sh~
 
-visualization/
+experiments/
+  
