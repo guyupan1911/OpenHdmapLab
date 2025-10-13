@@ -1,6 +1,7 @@
 import argparse
 
 from mmengine.config import Config
+from mmengine.utils import import_modules_from_strings
 from mmhdmap.registry import MODELS
 
 def parse_args():
@@ -18,6 +19,9 @@ def main():
 
     # load config
     cfg = Config.fromfile(args.config)
+
+    if 'custom_imports' in cfg:
+        import_modules_from_strings(cfg.custom_imports)
 
     model = MODELS.build(cfg.backbone)
 
