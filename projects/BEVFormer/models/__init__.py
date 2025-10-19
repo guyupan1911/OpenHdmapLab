@@ -1,1 +1,0 @@
-from .bevformer import BEVFormer
