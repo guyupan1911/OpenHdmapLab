@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="OpenHdMapLab",                # 包的名字
+    name="mmhdmap",                # 包的名字
     version="0.1.0",                 # 版本号
     author="Your Name",              # 作者
     author_email="you@example.com",  # 作者邮箱
