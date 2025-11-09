@@ -16,4 +16,4 @@ METRICS = Registry('metric', parent=MMENGINE_METRICS, locations=['mmhdmap.metric
 
 TRANSFORMS = Registry('transform', parent=MMENGINE_TRANSFORMS, locations=['mmhdmap.dataset.transforms'])
 
-TASK_UTILS = Registry('task util', parent=MMENGINE_TASK_UTILS, location=['mmhdmap.models'])
+TASK_UTILS = Registry('task util', parent=MMENGINE_TASK_UTILS, locations=['mmhdmap.models'])

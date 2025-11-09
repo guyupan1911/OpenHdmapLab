@@ -4,7 +4,8 @@ from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
 from mmdet.models.dense_heads import RPNHead
 from mmdet.models.task_modules.prior_generators import AnchorGenerator
-from mmdet.models.task_modules.coders import DeltaXYWHBBoxCoder
+# from mmdet.models.task_modules.coders import DeltaXYWHBBoxCoder
+from projects.detection.models.task_modules.coders import DeltaXYWHBBoxCoder
 from mmdet.models.losses import CrossEntropyLoss, L1Loss
 from mmdet.models.roi_heads import StandardRoIHead
 from mmdet.models.roi_heads.roi_extractors import SingleRoIExtractor

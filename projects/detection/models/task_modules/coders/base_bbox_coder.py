@@ -1,5 +1,4 @@
-from abc import ABCMeta abstractmethod
-
+from abc import ABCMeta, abstractmethod
 
 class BaseBBoxCoder(metaclass=ABCMeta):
     encode_size = 4
@@ -9,7 +8,11 @@ class BaseBBoxCoder(metaclass=ABCMeta):
     
     @abstractmethod
     def encode(self, bboxes, gt_bboxes):
+        raise NotImplementedError("This method must be implemented by subclasses")
+
     
     @abstractmethod
     def decode(self, bboxes, bboxes_pred):
+        raise NotImplementedError("This method must be implemented by subclasses")
+
         

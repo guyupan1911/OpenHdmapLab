@@ -18,7 +18,7 @@ class DeltaXYWHBBoxCoder(BaseBBoxCoder):
                  add_ctr_clamp: bool = False,
                  ctr_clamp: int = 32,
                  **kwargs) -> None:
-        super().__init__(**kwargs):
+        super().__init__(**kwargs)
         self.means = target_means
         self.stds = target_stds
         self.clip_border = clip_border
@@ -49,7 +49,10 @@ class DeltaXYWHBBoxCoder(BaseBBoxCoder):
             assert pred_bboxes.size(1) == bboxes.size(1)
         
         if pred_bboxes.ndim == 2 and not torch.onnx.is_in_onnx_export():
-            decoded_bboxes = delta2bbox()
+            decoded_bboxes = delta2bbox(bboxes, pred_bboxes, self.means,
+                                        self.stds, max_shape, wh_ratio_clip,
+                                        self.clip_border, self.add_ctr_clamp,
+                                        self.ctr_clamp)
         else:
             decoded_bboxes = oonx_delta2bbox()
         
@@ -105,3 +108,40 @@ def delta2bbox(
     ctr_clamp: int = 32) -> Tensor:
 
     num_bboxes, num_classes = deltas.size(0), deltas.size(1) // 4
+    if num_bboxes == 0:
+        return deltas
+    
+    deltas = deltas.reshape(-1, 4)
+
+    means = deltas.new_tensor(means).view(1, -1)
+    stds = deltas.new_tensor(stds).view(1, -1)
+    denorm_deltas = deltas * stds + means
+
+    dxy = denorm_deltas[:, :2]
+    dwh = denorm_deltas[:, 2:]
+
+    rois_ = rois.repeat(1, num_classes).reshape(-1, 4)
+    pxy = ((rois_[:, :2] + rois_[:, 2:]) * 0.5)
+    pwh = (rois_[:, 2:] - rois_[:, :2])
+
+    dxy_wh = pwh * dxy
+
+    max_ratio = np.abs(np.log(wh_ratio_clip))
+    if add_ctr_clamp:
+        dxy_wh = torch.clamp(dxy_wh, max=ctr_clamp, min=-ctr_clamp)
+        dwh = torch.clamp(dwh, max=max_ratio)
+    else:
+        dwh = dwh.clamp(min=-max_ratio, max=max_ratio)
+
+    gxy = pxy + dxy_wh
+    gwh = pwh * dwh.exp()
+    x1y1 = gxy - (gwh * 0.5)
+    x2y2 = gxy + (gwh * 0.5)
+    bboxes = torch.cat([x1y1, x2y2], dim=-1)
+    if clip_border and max_shape is not None:
+        bboxes[..., 0::2].clamp_(min=0, max=max_shape[1])
+        bboxes[..., 1::2].clamp_(min=0, max=max_shape[0])
+    bboxes = bboxes.reshape(num_bboxes, -1)
+    return bboxes
+
+
