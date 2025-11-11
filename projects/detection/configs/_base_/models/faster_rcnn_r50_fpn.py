@@ -10,7 +10,8 @@ from mmdet.models.losses import CrossEntropyLoss, L1Loss
 from mmdet.models.roi_heads import StandardRoIHead
 from mmdet.models.roi_heads.roi_extractors import SingleRoIExtractor
 from mmcv.ops import RoIAlign, nms
-from mmdet.models.roi_heads import Shared2FCBBoxHead
+# from mmdet.models.roi_heads import Shared2FCBBoxHead
+from projects.detection.models.roi_heads import Shared2FCBBoxHead
 from mmdet.models.task_modules.assigners import MaxIoUAssigner
 from mmdet.models.task_modules.samplers import RandomSampler
 

@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
-from mmenginr.config import ConfigDict
+from mmengine.config import ConfigDict
 from mmengine.model import BaseModule
 from mmengine.structures import InstanceData
 import torch
@@ -9,9 +9,12 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.modules.utils import _pair
 
-from mmdet.model.utils import empty_instances
+from mmdet.models.layers import multiclass_nms
+from mmdet.models.utils import empty_instances
+from mmdet.structures.bbox import get_box_tensor, scale_boxes
 from mmdet.utils import ConfigType, OptMultiConfig, InstanceList
-from mmhdmap.registry import MODELS, TASKS_UTILS
+
+from mmhdmap.registry import MODELS, TASK_UTILS
 
 
 @MODELS.register_module()
@@ -56,7 +59,7 @@ class BBoxHead(BaseModule):
         self.reg_predictor_cfg = reg_predictor_cfg
         self.cls_predictor_cfg = cls_predictor_cfg
 
-        self.bbox_coder = TASKS_UTILS.build(bbox_coder)
+        self.bbox_coder = TASK_UTILS.build(bbox_coder)
         self.loss_cls = MODELS.build(loss_cls)
         self.loss_bbox = MODELS.build(loss_bbox)
 
@@ -116,13 +119,18 @@ class BBoxHead(BaseModule):
                         batch_img_metas: List[dict],
                         rcnn_test_cfg: Optional[ConfigDict] = None,
                         rescale: bool = False) -> InstanceList:
+        print(f'rcnn_test_cfg: {rcnn_test_cfg}')
         assert len(cls_scores) == len(bbox_preds)
         result_list = []
         for img_id in range(len(batch_img_metas)):
             img_meta = batch_img_metas[img_id]
             results = self._predict_by_feat_single(
-
-            )
+                roi=rois[img_id],
+                cls_score=cls_scores[img_id],
+                bbox_pred=bbox_preds[img_id],
+                img_meta=img_meta,
+                rescale=rescale,
+                rcnn_test_cfg=rcnn_test_cfg)
             result_list.append(results)
         return result_list
 
@@ -168,3 +176,23 @@ class BBoxHead(BaseModule):
             assert img_meta.get('scale_factor') is not None
             scale_factor = [1 / s for s in img_meta['scale_factor']]
             bboxes = scale_boxes(bboxes, scale_factor)
+
+        bboxes = get_box_tensor(bboxes)
+        box_dim = bboxes.size(-1)
+        bboxes = bboxes.view(num_rois, -1)
+
+        if rcnn_test_cfg is None:
+            results.bboxes = bboxes
+            results.scores = scores
+        else:
+            det_bboxes, det_labels = multiclass_nms(
+                bboxes,
+                scores,
+                rcnn_test_cfg.score_thr,
+                rcnn_test_cfg.nms,
+                rcnn_test_cfg.max_per_img,
+                box_dim=box_dim)
+            results.bboxes = det_bboxes[:, :-1]
+            results.scores = det_bboxes[:, -1]
+            results.labels = det_labels
+        return results
