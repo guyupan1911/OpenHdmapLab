@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.modules.utils import _pair
 
-from mmdet.models.layers import multiclass_nms
+# from mmdet.models.layers import multiclass_nms
+from projects.detection.models.layers import multiclass_nms
 from mmdet.models.utils import empty_instances
 from mmdet.structures.bbox import get_box_tensor, scale_boxes
 from mmdet.utils import ConfigType, OptMultiConfig, InstanceList
