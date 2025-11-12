@@ -4,12 +4,12 @@ from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
 from mmdet.models.dense_heads import RPNHead
 from mmdet.models.task_modules.prior_generators import AnchorGenerator
-from projects.detection.models.task_modules.coders import DeltaXYWHBBoxCoder
+from mmdet.models.task_modules.coders import DeltaXYWHBBoxCoder
 from mmdet.models.losses import CrossEntropyLoss, L1Loss
 from mmdet.models.roi_heads import StandardRoIHead
-from projects.detection.models.roi_heads.roi_extractors import SingleRoIExtractor
+from mmdet.models.roi_heads.roi_extractors import SingleRoIExtractor
 from mmcv.ops import RoIAlign, nms
-from projects.detection.models.roi_heads import Shared2FCBBoxHead
+from mmdet.models.roi_heads import Shared2FCBBoxHead
 from mmdet.models.task_modules.assigners import MaxIoUAssigner
 from mmdet.models.task_modules.samplers import RandomSampler
 
