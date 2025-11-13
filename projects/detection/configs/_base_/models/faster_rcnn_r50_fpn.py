@@ -1,7 +1,8 @@
 from mmdet.models.detectors import FasterRCNN
 from mmdet.models.data_preprocessors import DetDataPreprocessor
 from mmdet.models.backbones import ResNet
-from mmdet.models.necks import FPN
+# from mmdet.models.necks import FPN
+from projects.detection.models.necks import FPN
 from mmdet.models.dense_heads import RPNHead
 from mmdet.models.task_modules.prior_generators import AnchorGenerator
 from projects.detection.models.task_modules.coders import DeltaXYWHBBoxCoder
