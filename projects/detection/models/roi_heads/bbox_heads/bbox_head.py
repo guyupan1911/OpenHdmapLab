@@ -120,7 +120,6 @@ class BBoxHead(BaseModule):
                         batch_img_metas: List[dict],
                         rcnn_test_cfg: Optional[ConfigDict] = None,
                         rescale: bool = False) -> InstanceList:
-        print(f'rcnn_test_cfg: {rcnn_test_cfg}')
         assert len(cls_scores) == len(bbox_preds)
         result_list = []
         for img_id in range(len(batch_img_metas)):
