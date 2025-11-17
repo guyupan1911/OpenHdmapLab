@@ -31,24 +31,24 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+args = parse_args()
+
+cfg = Config.fromfile(args.config)
+
+if args.work_dir is not None:
+    cfg.work_dir = args.work_dir
+elif cfg.get('work_dir', None) is None:
+    cfg.work_dir = osp.join('./work_dirs',
+                            osp.splitext(osp.basename(args.config))[0])
+
+cfg.load_from = args.checkpoint
+
+if args.show:
+    cfg = trigger_visualization_hook(cfg, args)
+
+runner = Runner.from_cfg(cfg)
+
 def main():
-    args = parse_args()
-
-    cfg = Config.fromfile(args.config)
-
-    if args.work_dir is not None:
-        cfg.work_dir = args.work_dir
-    elif cfg.get('work_dir', None) is None:
-        cfg.work_dir = osp.join('./work_dirs',
-                                osp.splitext(osp.basename(args.config))[0])
-
-    cfg.load_from = args.checkpoint
-
-    if args.show:
-        cfg = trigger_visualization_hook(cfg, args)
-
-    runner = Runner.from_cfg(cfg)
-    # runner.test()
     visualizer = DetLocalVisualizer()
     model = runner.model
     dataloader = runner.test_dataloader
@@ -71,7 +71,12 @@ def main():
                 output[0],
                 show=True)
             break
-    
+
+def run_val():
+    runner.val()
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    run_val()
   
