@@ -1,3 +1,4 @@
+from .detectors import *
 from .layers import *
 from .necks import *
 from .roi_heads import *

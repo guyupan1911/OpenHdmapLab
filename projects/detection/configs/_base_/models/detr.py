@@ -1,7 +1,8 @@
+from projects.detection.models.detectors import DETR
 from projects.detection.models.necks import ChannelMapper
 
 model = dict(
-    type='DETR',
+    type=DETR,
     data_preprocessor=dict(
         type='DetDataPreprocessor',
         bgr_to_rgb=True,
