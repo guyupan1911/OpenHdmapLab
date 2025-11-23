@@ -1,3 +1,5 @@
+from projects.detection.models.necks import ChannelMapper
+
 model = dict(
     type='DETR',
     data_preprocessor=dict(
@@ -21,7 +23,7 @@ model = dict(
             type='Pretrained',
             checkpoint='torchvision://resnet50')),
     neck=dict(
-        type='ChannelMapper',
+        type=ChannelMapper,
         in_channels=[2048],
         out_channels=256,
         kernel_size=1,

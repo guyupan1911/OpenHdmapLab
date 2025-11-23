@@ -77,6 +77,6 @@ def run_val():
 
 
 if __name__ == '__main__':
-    # main()
-    run_val()
+    main()
+    # run_val()
   
