@@ -1,5 +1,6 @@
 from projects.detection.models.detectors import DETR
 from projects.detection.models.necks import ChannelMapper
+from projects.detection.models.dense_heads import DETRHead
 
 model = dict(
     type=DETR,
@@ -74,7 +75,7 @@ model = dict(
         normalize=True),
     num_queries=100,
     bbox_head=dict(
-        type='DETRHead',
+        type=DETRHead,
         embed_dims=256,
         num_classes=80,
         loss_cls=dict(
