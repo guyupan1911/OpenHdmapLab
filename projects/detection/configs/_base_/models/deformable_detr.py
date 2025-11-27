@@ -1,84 +1,102 @@
+from projects.detection.models.detectors import DeformableDETR
+
 model = dict(
-    as_two_stage=False,
+    type=DeformableDETR,
+    data_preprocessor=dict(
+        type='DetDataPreprocessor',
+        bgr_to_rgb=True,
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        pad_size_divisor=1),
     backbone=dict(
+        type='ResNet',
         depth=50,
-        frozen_stages=1,
-        init_cfg=dict(checkpoint='torchvision://resnet50', type='Pretrained'),
-        norm_cfg=dict(requires_grad=False, type='BN'),
-        norm_eval=True,
         num_stages=4,
-        out_indices=(
-            1,
-            2,
-            3,
-        ),
+        out_indices=(1, 2, 3),
+        frozen_stages=1,
+        norm_cfg=dict(
+            type='BN',
+            requires_grad=False),
+        norm_eval=True,
         style='pytorch',
-        type='ResNet'),
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='torchvision://resnet50')),
+    neck=dict(
+        type='ChannelMapper',
+        in_channels=[512, 1024, 2048],
+        out_channels=256,
+        kernel_size=1,
+        norm_cfg=dict(
+            type='GN',
+            num_groups=32),
+        act_cfg=None,
+        num_outs=4),
+    encoder=dict(
+        num_layers=6,
+        layer_cfg=dict(
+            self_attn_cfg=dict(
+                embed_dims=256,
+                batch_first=True),
+            ffn_cfg=dict(
+                embed_dims=256,
+                feedforward_channels=1024,
+                ffn_drop=0.1))),
+    decoder=dict(
+        num_layers=6,
+        return_intermediate=True,
+        post_norm_cfg=None,
+        layer_cfg=dict(
+            self_attn_cfg=dict(
+                embed_dims=256,
+                num_heads=8,
+                dropout=0.1,
+                batch_first=True),
+            cross_attn_cfg=dict(
+                embed_dims=256,
+                batch_first=True),
+            ffn_cfg=dict(
+                embed_dims=256,
+                feedforward_channels=1024,
+                ffn_drop=0.1))),
+    positional_encoding=dict(
+        num_feats=128,
+        normalize=True,
+        offset=-0.5),
+    num_queries=300,
+    num_feature_levels=4,
     bbox_head=dict(
-        loss_bbox=dict(loss_weight=5.0, type='L1Loss'),
-        loss_cls=dict(
-            alpha=0.25,
-            gamma=2.0,
-            loss_weight=2.0,
-            type='FocalLoss',
-            use_sigmoid=True),
-        loss_iou=dict(loss_weight=2.0, type='GIoULoss'),
+        type='DeformableDETRHead',
         num_classes=80,
         sync_cls_avg_factor=True,
-        type='DeformableDETRHead'),
-    data_preprocessor=dict(
-        bgr_to_rgb=True,
-        mean=[
-            123.675,
-            116.28,
-            103.53,
-        ],
-        pad_size_divisor=1,
-        std=[
-            58.395,
-            57.12,
-            57.375,
-        ],
-        type='DetDataPreprocessor'),
-    decoder=dict(
-        layer_cfg=dict(
-            cross_attn_cfg=dict(batch_first=True, embed_dims=256),
-            ffn_cfg=dict(
-                embed_dims=256, feedforward_channels=1024, ffn_drop=0.1),
-            self_attn_cfg=dict(
-                batch_first=True, dropout=0.1, embed_dims=256, num_heads=8)),
-        num_layers=6,
-        post_norm_cfg=None,
-        return_intermediate=True),
-    encoder=dict(
-        layer_cfg=dict(
-            ffn_cfg=dict(
-                embed_dims=256, feedforward_channels=1024, ffn_drop=0.1),
-            self_attn_cfg=dict(batch_first=True, embed_dims=256)),
-        num_layers=6),
-    neck=dict(
-        act_cfg=None,
-        in_channels=[
-            512,
-            1024,
-            2048,
-        ],
-        kernel_size=1,
-        norm_cfg=dict(num_groups=32, type='GN'),
-        num_outs=4,
-        out_channels=256,
-        type='ChannelMapper'),
-    num_feature_levels=4,
-    num_queries=300,
-    positional_encoding=dict(normalize=True, num_feats=128, offset=-0.5),
-    test_cfg=dict(max_per_img=100),
+        loss_cls=dict(
+            type='FocalLoss',
+            use_sigmoid=True,
+            alpha=0.25,
+            gamma=2.0,
+            loss_weight=2.0),
+        loss_bbox=dict(
+            type='L1Loss',
+            loss_weight=5.0),
+        loss_iou=dict(
+            type='GIoULoss',
+            loss_weight=2.0)),
     train_cfg=dict(
         assigner=dict(
+            type='HungarianAssigner',
             match_costs=[
-                dict(type='FocalLossCost', weight=2.0),
-                dict(box_format='xywh', type='BBoxL1Cost', weight=5.0),
-                dict(iou_mode='giou', type='IoUCost', weight=2.0),
-            ],
-            type='HungarianAssigner')),
-    type='DeformableDETR',
+                dict(
+                    type='FocalLossCost',
+                    weight=2.0),
+                dict(
+                    type='BBoxL1Cost',
+                    box_format='xywh',
+                    weight=5.0),
+                dict(
+                    type='IoUCost',
+                    iou_mode='giou',
+                    weight=2.0),
+            ])),
+    test_cfg=dict(max_per_img=100),
+    as_two_stage=False,
     with_box_refine=False)
