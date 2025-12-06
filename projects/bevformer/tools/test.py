@@ -1,9 +1,12 @@
 import argparse
+import os
 import os.path as osp
 
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from mmengine.config import Config
 from mmengine.runner import Runner, load_checkpoint
@@ -125,14 +128,222 @@ def main():
         runner.train()
 
 
+def denormalize_img(img_tensor, img_norm_cfg=None, convert_bgr_to_rgb=False):
+    """Denormalize image tensor to [0, 255] uint8.
+    
+    Args:
+        img_tensor (torch.Tensor): Image tensor in [C, H, W] or [N, C, H, W] format.
+        img_norm_cfg (dict, optional): Normalization config with 'mean' and 'std'.
+        convert_bgr_to_rgb (bool): Whether to convert BGR to RGB. Default: False.
+    
+    Returns:
+        np.ndarray: Denormalized image in [H, W, C] format, uint8.
+    """
+    if isinstance(img_tensor, torch.Tensor):
+        img = img_tensor.detach().cpu().numpy()
+    else:
+        img = np.array(img_tensor)
+    
+    # Handle different tensor shapes
+    if img.ndim == 4:  # [N, C, H, W]
+        img = img[0]  # Take first image
+    if img.ndim == 3 and img.shape[0] == 3:  # [C, H, W]
+        img = img.transpose(1, 2, 0)  # [H, W, C]
+    
+    # Color channel conversion
+    # Current frame (frame_idx=0) appears to be in RGB format already
+    # Historical frames may need BGR->RGB conversion
+    if convert_bgr_to_rgb and img.shape[-1] == 3:
+        img = img[..., ::-1]  # Convert BGR to RGB
+    
+    # Check image value range
+    img_min, img_max = img.min(), img.max()
+    
+    # Denormalize if norm_cfg is provided
+    # Note: mmdet3d typically normalizes to [0, 1] range, but some models
+    # use ImageNet normalization (mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375])
+    if img_norm_cfg is not None:
+        mean = np.array(img_norm_cfg.get('mean', [0, 0, 0]))
+        std = np.array(img_norm_cfg.get('std', [1, 1, 1]))
+        
+        # If mean/std are large (ImageNet style), image is likely already normalized
+        # Otherwise, assume image is in [0, 1] range
+        if np.abs(mean).max() > 10 or np.abs(std - 1).max() > 0.1:
+            # ImageNet normalization: denormalize first
+            img = img * std + mean
+            # Then normalize to [0, 1]
+            img = img / 255.0
+        else:
+            # Image is likely already in [0, 1] range, just apply denormalization
+            img = img * std + mean
+    
+    # Handle different value ranges
+    if img_max > 1.5:
+        # Image is likely in [0, 255] range, normalize to [0, 1]
+        img = img / 255.0
+    elif img_min < 0:
+        # Image might be in [-1, 1] range or normalized with negative mean
+        # Try to map to [0, 1]
+        img = (img - img_min) / (img_max - img_min)
+    
+    # Clip to [0, 1] and convert to uint8
+    img = np.clip(img, 0, 1)
+    img = (img * 255).astype(np.uint8)
+    
+    return img
+
+
+def visualize_multi_frame_multi_view(inputs, data_samples, save_path=None, show=True):
+    """Visualize multi-frame multi-view images in a grid layout.
+    
+    Layout: Rows = views (cameras), Columns = frames (temporal)
+    
+    Args:
+        inputs (dict): Input dict containing 'img' key.
+            img shape: [T, N_views, C, H, W] or [T, C, H, W]
+        data_samples (Det3DDataSample): Data sample containing metainfo.
+        save_path (str, optional): Path to save the visualization.
+        show (bool): Whether to display the image.
+    """
+    img_tensor = inputs['img']  # [T, N_views, C, H, W] or [T, C, H, W]
+    
+    # Get normalization config from metainfo
+    img_norm_cfg = None
+    if hasattr(data_samples, 'metainfo') and 'img_norm_cfg' in data_samples.metainfo:
+        img_norm_cfg = data_samples.metainfo['img_norm_cfg']
+    
+    # Determine shape
+    if img_tensor.ndim == 5:  # [T, N_views, C, H, W]
+        num_frames, num_views, C, H, W = img_tensor.shape
+        is_multi_view = True
+    elif img_tensor.ndim == 4:  # [T, C, H, W] - single view
+        num_frames, C, H, W = img_tensor.shape
+        num_views = 1
+        is_multi_view = False
+    else:
+        raise ValueError(f"Unexpected img tensor shape: {img_tensor.shape}")
+    
+    # Camera view names (NuScenes standard order)
+    view_names = ['CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
+                  'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT']
+    
+    # Create grid: rows = views, cols = frames
+    fig, axes = plt.subplots(num_views, num_frames, 
+                            figsize=(num_frames * 4, num_views * 3),
+                            squeeze=False)
+    
+    # Process each frame and view
+    for frame_idx in range(num_frames):
+        for view_idx in range(num_views):
+            ax = axes[view_idx, frame_idx]
+            
+            # Extract image for this frame and view
+            if is_multi_view:
+                frame_view_img = img_tensor[frame_idx, view_idx]  # [C, H, W]
+            else:
+                frame_view_img = img_tensor[frame_idx]  # [C, H, W]
+            
+            # Denormalize and convert to numpy
+            # Current frame (frame_idx=0) is already in RGB, historical frames need BGR->RGB conversion
+            convert_bgr_to_rgb = (frame_idx != 0)
+            img_np = denormalize_img(frame_view_img, img_norm_cfg, convert_bgr_to_rgb=convert_bgr_to_rgb)
+            
+            # Debug: print image stats for first few images
+            if frame_idx == 0 and view_idx == 0:
+                if isinstance(frame_view_img, torch.Tensor):
+                    raw_min, raw_max = frame_view_img.min().item(), frame_view_img.max().item()
+                    raw_mean = frame_view_img.mean().item()
+                else:
+                    raw_min, raw_max = float(frame_view_img.min()), float(frame_view_img.max())
+                    raw_mean = float(frame_view_img.mean())
+                print(f"  Image stats (Frame {frame_idx}, View {view_idx}):")
+                print(f"    Raw tensor: min={raw_min:.4f}, max={raw_max:.4f}, mean={raw_mean:.4f}")
+                print(f"    Denormalized: min={img_np.min()}, max={img_np.max()}, mean={img_np.mean():.2f}")
+            
+            # Display image
+            ax.imshow(img_np)
+            ax.axis('off')
+            
+            # Add title: combine view name and frame info
+            title_parts = []
+            
+            # View name (for first column or all if single frame)
+            if view_idx < len(view_names):
+                view_name = view_names[view_idx]
+            else:
+                view_name = f'View {view_idx}'
+            
+            # Frame info
+            if frame_idx == 0:
+                frame_info = 'Current (t=0)'
+            else:
+                frame_info = f'Frame {frame_idx}'
+            
+            # Combine: show both view and frame for clarity
+            title = f'{view_name}\n{frame_info}'
+            ax.set_title(title, fontsize=9)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        # Create directory if it doesn't exist
+        save_dir = osp.dirname(save_path)
+        if save_dir and not osp.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+        
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Visualization saved to: {save_path}")
+    
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+
 def test_nuscenes():
     from mmdet3d.registry import MODELS
     args = parse_args()
     cfg = setup_config(args)
     nuscenes_dataset = MODELS.build(cfg.dataset)
     
-    data = nuscenes_dataset[10]
-    # inputs = nuscenes_dataset[0]['inputs']
+    print(f"Dataset length: {len(nuscenes_dataset)}")
+    
+    # Get sample data
+    sample_idx = 10
+    sample = nuscenes_dataset[sample_idx]
+    inputs = sample['inputs']
+    data_samples = sample['data_samples']
+    
+    # Print data structure info
+    print(f"\nSample {sample_idx} structure:")
+    print(f"  inputs keys: {list(inputs.keys())}")
+    if 'img' in inputs:
+        print(f"  img shape: {inputs['img'].shape}")
+        print(f"  img dtype: {inputs['img'].dtype}")
+    
+    if hasattr(data_samples, 'metainfo'):
+        print(f"  metainfo keys: {list(data_samples.metainfo.keys())}")
+        if 'img_norm_cfg' in data_samples.metainfo:
+            print(f"  img_norm_cfg: {data_samples.metainfo['img_norm_cfg']}")
+    
+    if hasattr(data_samples, 'gt_instances_3d'):
+        gt = data_samples.gt_instances_3d
+        print(f"  gt_instances_3d attributes: {[attr for attr in dir(gt) if not attr.startswith('_')]}")
+        if hasattr(gt, 'bboxes_3d'):
+            print(f"  gt_bboxes_3d: {gt.bboxes_3d}")
+        if hasattr(gt, 'labels_3d'):
+            print(f"  gt_labels_3d: {gt.labels_3d}")
+    
+    # Visualize
+    print("\nVisualizing multi-frame multi-view images...")
+    save_path = osp.join(cfg.work_dir, f'sample_{sample_idx}_visualization.png')
+    visualize_multi_frame_multi_view(
+        inputs, 
+        data_samples, 
+        save_path=save_path,
+        show=True
+    )
+
 
 if __name__ == '__main__':
     # main()

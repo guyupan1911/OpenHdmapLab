@@ -9,11 +9,12 @@ import argparse
 import os
 import pickle
 import sys
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 import numpy as np
 from nuscenes import NuScenes
 from nuscenes.utils import splits
+from nuscenes.utils.data_classes import Quaternion
 
 category2label = {
     'car': 0,
@@ -27,6 +28,75 @@ category2label = {
     'traffic_cone': 8,
     'barrier': 9
 }
+
+def get_sensor2top(
+    lidar2ego_translation: list,
+    lidar2ego_rotation: list,
+    lidar_ego2global_translation: list,
+    lidar_ego2global_rotation: list,
+    cam2ego_translation: list,
+    cam2ego_rotation: list,
+    cam_ego2global_translation: list,
+    cam_ego2global_rotation: list) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute transformation matrix from LiDAR to camera.
+    
+    Since LiDAR and camera may have different ego_pose (different timestamps),
+    we need to transform through global coordinate system:
+    lidar -> lidar_ego -> global -> cam_ego -> cam
+    
+    Args:
+        lidar2ego_translation (list): Translation from LiDAR to LiDAR's Ego [x, y, z].
+        lidar2ego_rotation (list): Rotation quaternion from LiDAR to LiDAR's Ego [w, x, y, z].
+        lidar_ego2global_translation (list): Translation from LiDAR's Ego to Global [x, y, z].
+        lidar_ego2global_rotation (list): Rotation quaternion from LiDAR's Ego to Global [w, x, y, z].
+        cam2ego_translation (list): Translation from Camera to Camera's Ego [x, y, z].
+        cam2ego_rotation (list): Rotation quaternion from Camera to Camera's Ego [w, x, y, z].
+        cam_ego2global_translation (list): Translation from Camera's Ego to Global [x, y, z].
+        cam_ego2global_rotation (list): Rotation quaternion from Camera's Ego to Global [w, x, y, z].
+        
+    Returns:
+        tuple: (lidar2cam_rotation (3x3), lidar2cam_translation (3,))
+            Transformation from LiDAR to Camera coordinate system.
+    """
+    # Convert quaternions to rotation matrices
+    lidar2ego_quat = Quaternion(lidar2ego_rotation)
+    lidar2ego_rot = lidar2ego_quat.rotation_matrix  # 3x3
+    
+    lidar_ego2global_quat = Quaternion(lidar_ego2global_rotation)
+    lidar_ego2global_rot = lidar_ego2global_quat.rotation_matrix  # 3x3
+    
+    cam2ego_quat = Quaternion(cam2ego_rotation)
+    cam2ego_rot = cam2ego_quat.rotation_matrix  # 3x3
+    
+    cam_ego2global_quat = Quaternion(cam_ego2global_rotation)
+    cam_ego2global_rot = cam_ego2global_quat.rotation_matrix  # 3x3
+    
+    # Convert to numpy arrays
+    lidar2ego_trans = np.array(lidar2ego_translation)
+    lidar_ego2global_trans = np.array(lidar_ego2global_translation)
+    cam2ego_trans = np.array(cam2ego_translation)
+    cam_ego2global_trans = np.array(cam_ego2global_translation)
+    
+    # Transform chain: lidar -> lidar_ego -> global -> cam_ego -> cam
+    # Step 1: lidar -> lidar_ego -> global
+    lidar2global_rot = lidar_ego2global_rot @ lidar2ego_rot
+    lidar2global_trans = lidar_ego2global_rot @ lidar2ego_trans + lidar_ego2global_trans
+    
+    # Step 2: global -> cam_ego (inverse of cam_ego2global)
+    global2cam_ego_rot = cam_ego2global_rot.T
+    global2cam_ego_trans = -global2cam_ego_rot @ cam_ego2global_trans
+    
+    # Step 3: cam_ego -> cam (inverse of cam2ego)
+    cam_ego2cam_rot = cam2ego_rot.T
+    cam_ego2cam_trans = -cam_ego2cam_rot @ cam2ego_trans
+    
+    # Combine: lidar -> global -> cam_ego -> cam
+    # Rotation: R_lidar2cam = R_cam_ego2cam @ R_global2cam_ego @ R_lidar2global
+    lidar2cam_rot = cam_ego2cam_rot @ global2cam_ego_rot @ lidar2global_rot
+    # Translation: t_lidar2cam = R_cam_ego2cam @ (R_global2cam_ego @ t_lidar2global + t_global2cam_ego) + t_cam_ego2cam
+    lidar2cam_trans = cam_ego2cam_rot @ (global2cam_ego_rot @ lidar2global_trans + global2cam_ego_trans) + cam_ego2cam_trans
+    
+    return lidar2cam_rot, lidar2cam_trans
 
 def get_sample_data_info(
     nusc: NuScenes,
@@ -51,12 +121,17 @@ def get_sample_data_info(
     lidar_cs = nusc.get('calibrated_sensor', lidar_sd['calibrated_sensor_token'])
     lidar_pose = nusc.get('ego_pose', lidar_sd['ego_pose_token'])
     
-    # Build data info dict - only fields needed by mmdet3d
+    lidar_filename = lidar_sd['filename']
+    if '/' in lidar_filename:
+        lidar_filename = lidar_filename.split('/')[-1]
+    lidar_points = {}
+    lidar_points['lidar_path'] = lidar_filename
+
     info = {
         'token': sample_token,
         'scene_token': scene_token,
         'timestamp': sample['timestamp'],
-        'lidar_path': os.path.join(data_root, lidar_sd['filename']),
+        'lidar_points': lidar_points,
         'lidar2ego_translation': lidar_cs['translation'],
         'lidar2ego_rotation': lidar_cs['rotation'],
         'ego2global_translation': lidar_pose['translation'],
@@ -72,17 +147,43 @@ def get_sample_data_info(
             cam_sd = nusc.get('sample_data', cam_token)
             cam_cs = nusc.get('calibrated_sensor', cam_sd['calibrated_sensor_token'])
             cam_pose = nusc.get('ego_pose', cam_sd['ego_pose_token'])
+
+            # Compute LiDAR to camera transformation matrix
+            # Note: lidar_pose and cam_pose may be different (different timestamps)
+            # So we need to transform through global coordinate system
+            lidar2cam_rot, lidar2cam_trans = get_sensor2top(
+                lidar2ego_translation=lidar_cs['translation'],
+                lidar2ego_rotation=lidar_cs['rotation'],
+                lidar_ego2global_translation=lidar_pose['translation'],
+                lidar_ego2global_rotation=lidar_pose['rotation'],
+                cam2ego_translation=cam_cs['translation'],
+                cam2ego_rotation=cam_cs['rotation'],
+                cam_ego2global_translation=cam_pose['translation'],
+                cam_ego2global_rotation=cam_pose['rotation']
+            )
             
+            # Build lidar2cam matrix (4x4 homogeneous transformation matrix)
+            lidar2cam = np.eye(4, dtype=np.float32)
+            lidar2cam[:3, :3] = lidar2cam_rot
+            lidar2cam[:3, 3] = lidar2cam_trans
+
+            cam_filename = cam_sd['filename']
+            if '/' in cam_filename:
+                cam_filename = cam_filename.split('/')[-1]
+
             images[channel] = {
-                'img_path': os.path.join(data_root, cam_sd['filename']),
+                'img_path': cam_filename,
                 'sample_data_token': cam_sd['token'],
                 'sensor2ego_translation': cam_cs['translation'],
                 'sensor2ego_rotation': cam_cs['rotation'],
                 'ego2global_translation': cam_pose['translation'],
                 'ego2global_rotation': cam_pose['rotation'],
-                'cam_intrinsic': cam_cs['camera_intrinsic'],
+                'cam2img': cam_cs['camera_intrinsic'],
+                'lidar2cam': lidar2cam,  # 4x4 transformation matrix
             }
     info['images'] = images
+    
+    
     
     # Sweeps info (historical frames)
     sweeps = []
@@ -93,8 +194,12 @@ def get_sample_data_info(
         prev_cs = nusc.get('calibrated_sensor', prev_sd['calibrated_sensor_token'])
         prev_pose = nusc.get('ego_pose', prev_sd['ego_pose_token'])
         
+        prev_filename = prev_sd['filename']
+        if '/' in prev_filename:
+            prev_filename = prev_filename.split('/')[-1]
+
         sweeps.append({
-            'lidar_path': os.path.join(data_root, prev_sd['filename']),
+            'lidar_path': prev_filename,
             'sample_data_token': prev_sd['token'],
             'sensor2ego_translation': prev_cs['translation'],
             'sensor2ego_rotation': prev_cs['rotation'],

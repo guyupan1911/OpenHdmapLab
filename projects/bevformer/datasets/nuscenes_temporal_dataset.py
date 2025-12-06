@@ -62,12 +62,13 @@ class NuScenesTemporalDataset(NuScenesDataset):
             hist_input['box_type_3d'] = self.box_type_3d
             hist_input['box_mode_3d'] = self.box_mode_3d
             # Share annotation info for pipeline consistency, not used
-            if not self.test_mode:
-                hist_input['ann_info'] = copy.deepcopy(data_info['ann_info'])
+            # if not self.test_mode:
+            #     hist_input['ann_info'] = copy.deepcopy(data_info['ann_info'])
             multi_frame_inputs[frame_idx] = hist_input
         
         result = {
-            'multi_frame_data': multi_frame_inputs
+            'multi_frame_data': multi_frame_inputs,
+            'ann_info': data_info['ann_info']
         }
 
         return self.pipeline(result)

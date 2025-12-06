@@ -1,7 +1,8 @@
-# from mmdet3d.datasets.nuscenes_dataset import NuScenesDataset
+from mmdet3d.datasets.nuscenes_dataset import NuScenesDataset
 from projects.bevformer.datasets import NuScenesTemporalDataset
 
-from projects.bevformer.datasets.transforms import PrintDict
+from projects.bevformer.datasets.transforms import (PrintDict, LoadMultiFrameData, MultiFrameWrapper,
+                                                    PackMultiFrame3DDetInputs)
 
 default_scope = 'mmdet3d'
 
@@ -37,21 +38,34 @@ test_transforms = [
 train_transforms = [dict(type='mmdet3d.PhotoMetricDistortion3D')] + test_transforms
 
 train_pipeline = [
-    dict(type=PrintDict),
-    dict(
-        type='mmdet3d.LoadMultiViewImageFromFiles',
-        to_float32=True,
-        num_views=6,
-        backend_args=backend_args),
+    dict(type=LoadMultiFrameData,
+         transforms = [
+            dict(
+                type='mmdet3d.LoadMultiViewImageFromFiles',
+                to_float32=True,
+                num_views=6,
+                backend_args=backend_args),
+            # dict(
+            #     type='mmdet3d.LoadPointsFromFile',
+            #     coord_type='LIDAR',
+            #     load_dim=5,
+            #     use_dim=5,
+            #     backend_args=backend_args),
+            # dict(
+            #     type='mmdet3d.LoadPointsFromMultiSweeps',
+            #     sweeps_num=10,
+            #     backend_args=backend_args),
+        ]),
     dict(
         type='mmdet3d.LoadAnnotations3D',
         with_bbox_3d=True,
         with_label_3d=True,
         with_attr_label=False),
-    dict(type='mmdet3d.MultiViewWrapper', transforms=train_transforms),
+    # dict(type=MultiFrameWrapper, transforms=train_transforms),
     dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
-    dict(type='mmdet3d.Pack3DDetInputs', keys=['img', 'gt_bboxes_3d', 'gt_labels_3d'])
+    dict(type=PrintDict),
+    dict(type=PackMultiFrame3DDetInputs, keys=['img', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
 dataset = dict(
@@ -68,4 +82,7 @@ dataset = dict(
     # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
     # and box_type_3d='Depth' in sunrgbd and scannet dataset.
     box_type_3d='LiDAR',
-    backend_args=backend_args)
+    backend_args=backend_args,
+    # Performance optimization: serialize data to cache parsed results
+    # This avoids re-parsing pkl file on each epoch, significantly speeds up loading
+    serialize_data=True)
