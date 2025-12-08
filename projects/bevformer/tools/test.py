@@ -7,11 +7,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from rich import print
 
 from mmengine.config import Config
 from mmengine.runner import Runner, load_checkpoint
 from mmdet.engine.hooks.utils import trigger_visualization_hook
 from mmdet.visualization import DetLocalVisualizer
+
+from mmhdmap.registry import MODELS
 
 def parse_args():
     """Parse command line arguments."""
@@ -344,7 +347,35 @@ def test_nuscenes():
         show=True
     )
 
+def test_ckpt():
+    args = parse_args()
+    cfg = setup_config(args)
+
+    ckpt = torch.load(args.checkpoint, map_location='cpu')['state_dict']
+
+    # img_backbone
+    img_backbone = MODELS.build(cfg.model.img_backbone)
+    backbone_ckpt = {k.replace('img_backbone.', ''): v for k, v in ckpt.items() if 'img_backbone' in k}
+    missing, unexpected = img_backbone.load_state_dict(backbone_ckpt, strict=False)
+    if len(missing) > 0 or len(unexpected) > 0:
+        print('[bold red]Some keys did not match for the img_backbone[/bold red]')
+        print(f'missing keys: {missing}')
+        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    else:
+        print('[bold green]All keys matched successfully for the img_backbone[/bold green]')
+
+    # img_neck
+    img_neck = MODELS.build(cfg.model.img_neck)
+    neck_ckpt = {k.replace('img_neck.', ''): v for k, v in ckpt.items() if 'img_neck' in k}
+    missing, unexpected = img_neck.load_state_dict(neck_ckpt, strict=False)
+    if len(missing) > 0 or len(unexpected) > 0:
+        print('[bold red]Some keys did not match for the img_neck[/bold red]')
+        print(f'missing keys: {missing}')
+        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    else:   
+        print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
 if __name__ == '__main__':
     # main()
-    test_nuscenes()
+    # test_nuscenes()
+    test_ckpt()

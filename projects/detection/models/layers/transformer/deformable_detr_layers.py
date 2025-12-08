@@ -4,7 +4,8 @@ import torch
 from torch import Tensor, nn
 from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.transformer import FFN, MultiheadAttention
-from mmcv.ops import MultiScaleDeformableAttention
+# from mmcv.ops import MultiScaleDeformableAttention
+from .multi_scale_deform_attn import MultiScaleDeformableAttention
 from mmengine.model import ModuleList
 
 from .detr_layers import (DetrTransformerDecoder, DetrTransformerDecoderLayer,
