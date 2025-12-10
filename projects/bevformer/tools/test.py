@@ -377,6 +377,8 @@ def test_ckpt():
 
     temporal_self_attn = MODELS.build(cfg.model.temporal_self_attn)
     print(f'temporal_self_attn: {temporal_self_attn}')
+    ms_attn_3d = MODELS.build(cfg.model.ms_attn_3d)
+    print(f'ms_attn_3d: {ms_attn_3d}')
 
 if __name__ == '__main__':
     # main()
