@@ -29,7 +29,8 @@ class SpatialCrossAttention(BaseModule):
                     embed_dims=256,
                     num_levels=4
                  ),
-                 init_cfg: Optional[ConfigDict] = None):
+                 init_cfg: Optional[ConfigDict] = None,
+                 **kwargs):
         super().__init__(init_cfg)
         self.dropout = nn.Dropout(dropout)
         self.fp16_enabled = False

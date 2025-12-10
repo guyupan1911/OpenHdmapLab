@@ -30,7 +30,8 @@ class TemporalSelfAttention(BaseModule):
                  batch_first: bool = True,
                  norm_cfg: Optional[dict] = None,
                  init_cfg: Optional[ConfigDict] = None,
-                 value_proj_ratio: float = 1.0):
+                 value_proj_ratio: float = 1.0,
+                 **kwargs):
         super().__init__(init_cfg)
         if embed_dims % num_heads != 0:
             raise ValueError(f'embed_dims must be divisible by num_heads, ' 

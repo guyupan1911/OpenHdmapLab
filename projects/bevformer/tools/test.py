@@ -375,10 +375,12 @@ def test_ckpt():
     else:   
         print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
-    temporal_self_attn = MODELS.build(cfg.model.temporal_self_attn)
-    print(f'temporal_self_attn: {temporal_self_attn}')
-    spatial_cross_attn = MODELS.build(cfg.model.spatial_cross_attn)
-    print(f'spatial_cross_attn: {spatial_cross_attn}')
+    # temporal_self_attn = MODELS.build(cfg.model.temporal_self_attn)
+    # print(f'temporal_self_attn: {temporal_self_attn}')
+    # spatial_cross_attn = MODELS.build(cfg.model.spatial_cross_attn)
+    # print(f'spatial_cross_attn: {spatial_cross_attn}')
+    bevformer_encoder_layer = MODELS.build(cfg.model.bevformer_encoder_layer)
+    print(f'bevformer_encoder_layer: {bevformer_encoder_layer}')
 
 if __name__ == '__main__':
     # main()
