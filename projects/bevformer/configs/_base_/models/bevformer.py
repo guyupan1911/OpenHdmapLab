@@ -1,6 +1,6 @@
 from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
-from projects.bevformer.models import TemporalSelfAttention, MSDeformableAttention3D
+from projects.bevformer.models import TemporalSelfAttention, SpatialCrossAttention
 
 dim = 256
 num_levels = 1
@@ -26,9 +26,15 @@ model = dict(
     temporal_self_attn=dict(
         type=TemporalSelfAttention,
         embed_dims=256,
+        num_levels=1,
         batch_first=True),
-    ms_attn_3d=dict(
-        type=MSDeformableAttention3D,
+    spatial_cross_attn=dict(
+        type=SpatialCrossAttention,
         embed_dims=256,
-        batch_first=True)
+        attn_cfg=dict(
+            type='MSDeformableAttention3D',
+            embed_dims=256,
+            num_points=8,
+            num_levels=4,
+            batch_first=True))
 )

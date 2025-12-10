@@ -1,6 +1,6 @@
 from .temporal_self_attention import TemporalSelfAttention
-from .spatial_cross_attention import MSDeformableAttention3D
+from .spatial_cross_attention import SpatialCrossAttention
 
 __all__ = [
-    'TemporalSelfAttention', 'MSDeformableAttention3D'
+    'TemporalSelfAttention', 'SpatialCrossAttention'
 ]

@@ -18,6 +18,109 @@ from mmhdmap.registry import MODELS
 
 
 @MODELS.register_module()
+class SpatialCrossAttention(BaseModule):
+
+    def __init__(self,
+                 embed_dims: int = 256,
+                 num_cams: int = 6,
+                 dropout: float = 0.1,
+                 attn_cfg: dict = dict(
+                    type='MSDeformableAttention3D',
+                    embed_dims=256,
+                    num_levels=4
+                 ),
+                 init_cfg: Optional[ConfigDict] = None):
+        super().__init__(init_cfg)
+        self.dropout = nn.Dropout(dropout)
+        self.fp16_enabled = False
+        self.deformable_attention = MODELS.build(attn_cfg)
+        self.embed_dims = embed_dims
+        self.num_cams = num_cams
+        self.output_proj = nn.Linear(embed_dims, embed_dims)
+        self.init_weight()
+
+    def init_weight(self):
+        xavier_init(self.output_proj, distribution='uniform', bias=0.)
+    
+    def forward(self,
+                query: Tensor,
+                key: Optional[Tensor] = None,
+                value: Optional[Tensor] = None,
+                identity: Optional[Tensor] = None,
+                query_pos: Optional[Tensor] = None,
+                key_padding_mask: Optional[Tensor] = None,
+                spatial_shapes: Optional[Tensor] = None,
+                reference_points_cam: Optional[Tensor] = None,
+                bev_mask: Optional[Tensor] = None,
+                level_start_index: Optional[Tensor] = None,
+                **kwargs):
+
+        if key is None:
+            key = query
+        if value is None:
+            value = key
+        if identity is None:
+            identity = query
+        if query_pos is not None:
+            query = query + query_pos
+        
+        slots = torch.zeros_like(query)
+    
+        bs, num_query, _ = query.size()
+        num_Z_anchors = reference_points_cam.size(3)
+
+        indexes = []
+        for i, mask_per_img in enumerate(bev_mask):
+            index_query_per_img = mask_per_img[0].sum(-1).nonzero().squeeze(-1)
+            indexes.append(index_query_per_img) #(M)
+        max_len = max([len(each) for each in indexes])
+
+        queries_rebatch = query.new_zeros(
+            [bs, self.num_cams, max_len, self.embed_dims])
+        reference_points_rebatch = reference_points_cam.new_zeros(
+            [bs, self.num_cams, max_len, num_Z_anchors, 2])
+        
+        for i in range(bs):
+            for j, reference_points_per_img in enumerate(reference_points_cam):
+                index_query_per_img = indexes[j]
+                queries_rebatch[i, j, :len(index_query_per_img)] = query[i, index_query_per_img]
+                reference_points_rebatch[i, j, :len(index_query_per_img)] = \
+                    reference_points_per_img[i, index_query_per_img]
+        
+        num_cams, l, bs, embed_dims = key.shape
+        key = key.permute(2, 0, 1, 3).reshape(bs * self.num_cams, l, self.embed_dims)
+        value = value.permute(2, 0, 1, 3).reshape(bs * self.num_cams, l, self.embed_dims)
+        
+        queries_rebatch = queries_rebatch.view(bs * self.num_cams, max_len, self.embed_dims)
+        reference_points_rebatch = reference_points_rebatch.view(
+            bs * self.num_cams, max_len, num_Z_anchors, 2)
+        
+        output = self.deformable_attention(
+            query=queries_rebatch,
+            key=key,
+            value=value,
+            reference_points=reference_points_rebatch,
+            spatial_shapes=spatial_shapes,
+            level_start_index = level_start_index)
+        
+        output = output.view(bs, self.num_cams, max_len, self.embed_dims)
+
+        for i in range(bs):
+            for j, index_query_per_img in enumerate(indexes):
+                slots[i, index_query_per_img] += output[i, j, :len(index_query_per_img)]
+        
+        # (num_cams, bs, num_queries, num_Z_anchors)
+        count = bev_mask.sum(-1) > 0
+        count = count.permute(1, 2, 0).sum(-1)
+        count = torch.clamp(count, min=1.0)
+        slots = slots / count[..., None]
+        slots = self.output_proj(slots)
+
+        return self.dropout(slots) + identity
+
+
+
+@MODELS.register_module()
 class MSDeformableAttention3D(BaseModule):
 
     def __init__(self,
