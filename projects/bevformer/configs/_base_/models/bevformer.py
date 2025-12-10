@@ -1,5 +1,6 @@
 from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
+from projects.bevformer.models import TemporalSelfAttention
 
 dim = 256
 num_levels = 1
@@ -22,4 +23,8 @@ model = dict(
         add_extra_convs='on_output',
         num_outs=num_levels,
         relu_before_extra_convs=True),
+    temporal_self_attn=dict(
+        type=TemporalSelfAttention,
+        embed_dims=256,
+        batch_first=True),
 )

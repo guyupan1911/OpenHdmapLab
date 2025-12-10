@@ -375,6 +375,9 @@ def test_ckpt():
     else:   
         print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
+    temporal_self_attn = MODELS.build(cfg.model.temporal_self_attn)
+    print(f'temporal_self_attn: {temporal_self_attn}')
+
 if __name__ == '__main__':
     # main()
     # test_nuscenes()
