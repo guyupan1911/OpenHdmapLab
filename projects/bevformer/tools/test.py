@@ -353,7 +353,7 @@ def test_ckpt():
 
     ckpt = torch.load(args.checkpoint, map_location='cpu')['state_dict']
 
-    # remapper ckpt
+    # remap ckpt
     def remap_attention_keys(state_dict):
         new_state_dict = {}
         for k, v in state_dict.items():
@@ -403,17 +403,19 @@ def test_ckpt():
         print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
 
-    bevformer_encoder_layer = MODELS.build(cfg.model.bevformer_encoder_layer)
-    bevformer_encoder_layer_ckpt={k.replace('pts_bbox_head.transformer.encoder.layers.0.', ''): v
+    bevformer_encoder = MODELS.build(cfg.model.bevformer_encoder)
+    bevformer_encoder_ckpt={k.replace('pts_bbox_head.transformer.encoder.', ''): v
                                     for k, v in ckpt.items()
-                                    if 'pts_bbox_head.transformer.encoder.layers.0' in k}
-    missing, unexpected = bevformer_encoder_layer.load_state_dict(bevformer_encoder_layer_ckpt, strict=False)
+                                    if 'pts_bbox_head.transformer.encoder' in k}
+    missing, unexpected = bevformer_encoder.load_state_dict(bevformer_encoder_ckpt, strict=False)
     if len(missing) > 0 or len(unexpected) > 0:
-        print('[bold red]Some keys did not match for the bevformer_encoder_layer[/bold red]')
+        print('[bold red]Some keys did not match for the bevformer_encoder[/bold red]')
         print(f'missing keys: {missing}')
         print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
     else:   
-        print('[bold green]All keys matched successfully for the bevformer_encoder_layer[/bold green]')
+        print('[bold green]All keys matched successfully for the bevformer_encoder[/bold green]')
+
+    print(f'bevformer_encoder: {bevformer_encoder}')
 
 if __name__ == '__main__':
     # main()
