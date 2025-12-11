@@ -37,11 +37,11 @@ model = dict(
                 type='MSDeformableAttention3D',
                 embed_dims=256,
                 num_points=8,
-                num_levels=4,
+                num_levels=1,
                 batch_first=True)),
         ffn_cfg=dict(
             embed_dims=256,
-            feedforward_channels=1024,
+            feedforward_channels=512,
             ffn_drop=0.1)
     )
 )

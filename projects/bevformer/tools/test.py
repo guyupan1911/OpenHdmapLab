@@ -353,6 +353,33 @@ def test_ckpt():
 
     ckpt = torch.load(args.checkpoint, map_location='cpu')['state_dict']
 
+    # remapper ckpt
+    def remap_attention_keys(state_dict):
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            new_k = k
+            if 'pts_bbox_head.transformer.encoder.layers' in k:
+                if 'attentions.0' in k:
+                    # attentions.0 → temporal_self_attn
+                    new_k = new_k.replace(
+                        "attentions.0.", "temporal_attn."
+                    )
+                elif 'attentions.1' in k:
+                    # attentions.1 → spatial_cross_attn
+                    new_k = new_k.replace(
+                        "attentions.1.", "spatial_cross_attn."
+                    )
+                elif 'ffns.0' in k:
+                    new_k = new_k.replace(
+                        'ffns.0', 'ffn'
+                    )
+
+            new_state_dict[new_k] = v
+
+        return new_state_dict
+
+    ckpt = remap_attention_keys(ckpt)
+
     # img_backbone
     img_backbone = MODELS.build(cfg.model.img_backbone)
     backbone_ckpt = {k.replace('img_backbone.', ''): v for k, v in ckpt.items() if 'img_backbone' in k}
@@ -375,12 +402,18 @@ def test_ckpt():
     else:   
         print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
-    # temporal_self_attn = MODELS.build(cfg.model.temporal_self_attn)
-    # print(f'temporal_self_attn: {temporal_self_attn}')
-    # spatial_cross_attn = MODELS.build(cfg.model.spatial_cross_attn)
-    # print(f'spatial_cross_attn: {spatial_cross_attn}')
+
     bevformer_encoder_layer = MODELS.build(cfg.model.bevformer_encoder_layer)
-    print(f'bevformer_encoder_layer: {bevformer_encoder_layer}')
+    bevformer_encoder_layer_ckpt={k.replace('pts_bbox_head.transformer.encoder.layers.0.', ''): v
+                                    for k, v in ckpt.items()
+                                    if 'pts_bbox_head.transformer.encoder.layers.0' in k}
+    missing, unexpected = bevformer_encoder_layer.load_state_dict(bevformer_encoder_layer_ckpt, strict=False)
+    if len(missing) > 0 or len(unexpected) > 0:
+        print('[bold red]Some keys did not match for the bevformer_encoder_layer[/bold red]')
+        print(f'missing keys: {missing}')
+        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    else:   
+        print('[bold green]All keys matched successfully for the bevformer_encoder_layer[/bold green]')
 
 if __name__ == '__main__':
     # main()

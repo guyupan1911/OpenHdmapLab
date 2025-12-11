@@ -1,4 +1,5 @@
 import torch
+from rich import print
 
 from collections import defaultdict
 
@@ -15,9 +16,9 @@ for key in ckpt['state_dict'].keys():
     modules[module_name].append(key)
 
 for module_name, keys in modules.items():
-    print(f'{module_name}:')
     for k in keys:
-        if 'transformer' in k.lower():
-            print(f' {k}')
-    print()
+        if 'pts_bbox_head.transformer.encoder' in k.lower():
+            k.replace('pts_bbox_head.transformer.encoder.', '')
+            print(f'{k}')
+
 
