@@ -1,6 +1,8 @@
 from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
-from projects.bevformer.models import TemporalSelfAttention, SpatialCrossAttention, BEVFormerEncoder, BEVFormerEncoderLayer
+from projects.bevformer.models import (TemporalSelfAttention, SpatialCrossAttention,
+                                       BEVFormerEncoder, BEVFormerEncoderLayer,
+                                       BEVFormerDecoder)
 
 dim = 256
 num_levels = 1
@@ -51,5 +53,23 @@ model = dict(
                 embed_dims=256,
                 feedforward_channels=512,
                 ffn_drop=0.1)
-        ))
+        )),
+    bevformer_decoder=dict(
+        type=BEVFormerDecoder,
+        num_layers=6,
+        return_intermediate=True,
+        layer_cfg=dict(
+            self_attn_cfg=dict(
+                embed_dims=256,
+                num_heads=8,
+                dropout=0.1,
+                batch_first=True),
+            cross_attn_cfg=dict(
+                embed_dims=256,
+                num_levels=1,
+                batch_first=True),
+            ffn_cfg=dict(
+                embed_dims=256,
+                feedforward_channels=512,
+                ffn_drop=0.1))),
 )

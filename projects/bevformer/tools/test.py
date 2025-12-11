@@ -373,6 +373,19 @@ def test_ckpt():
                     new_k = new_k.replace(
                         'ffns.0', 'ffn'
                     )
+            elif 'pts_bbox_head.transformer.decoder.layers' in k:
+                if 'attentions.0' in k:
+                    new_k = new_k.replace(
+                        'attentions.0', 'self_attn'
+                    )
+                elif 'attentions.1' in k:
+                    new_k = new_k.replace(
+                        'attentions.1', 'cross_attn'
+                    )
+                elif 'ffns.0' in k:
+                    new_k = new_k.replace(
+                        'ffns.0', 'ffn'
+                    )
 
             new_state_dict[new_k] = v
 
@@ -415,7 +428,17 @@ def test_ckpt():
     else:   
         print('[bold green]All keys matched successfully for the bevformer_encoder[/bold green]')
 
-    print(f'bevformer_encoder: {bevformer_encoder}')
+    bevformer_decoder = MODELS.build(cfg.model.bevformer_decoder)
+    bevformer_decoder_ckpt={k.replace('pts_bbox_head.transformer.decoder.', ''): v
+                                    for k, v in ckpt.items()
+                                    if 'pts_bbox_head.transformer.decoder' in k}
+    missing, unexpected = bevformer_decoder.load_state_dict(bevformer_decoder_ckpt, strict=False)
+    if len(missing) > 0 or len(unexpected) > 0:
+        print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
+        print(f'missing keys: {missing}')
+        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    else:   
+        print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
 
 if __name__ == '__main__':
     # main()
