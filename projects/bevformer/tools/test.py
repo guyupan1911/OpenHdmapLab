@@ -358,31 +358,38 @@ def test_ckpt():
         new_state_dict = {}
         for k, v in state_dict.items():
             new_k = k
-            if 'pts_bbox_head.transformer.encoder.layers' in k:
-                if 'attentions.0' in k:
+
+            if 'pts_bbox_head' in new_k:
+                new_k = new_k.replace('pts_bbox_head.', '')
+
+            if 'transformer' in new_k:
+                new_k = new_k.replace('transformer.', '')
+
+            if 'encoder.layers' in new_k:
+                if 'attentions.0' in new_k:
                     # attentions.0 → temporal_self_attn
                     new_k = new_k.replace(
                         "attentions.0.", "temporal_attn."
                     )
-                elif 'attentions.1' in k:
+                elif 'attentions.1' in new_k:
                     # attentions.1 → spatial_cross_attn
                     new_k = new_k.replace(
                         "attentions.1.", "spatial_cross_attn."
                     )
-                elif 'ffns.0' in k:
+                elif 'ffns.0' in new_k:
                     new_k = new_k.replace(
                         'ffns.0', 'ffn'
                     )
-            elif 'pts_bbox_head.transformer.decoder.layers' in k:
-                if 'attentions.0' in k:
+            elif 'decoder.layers' in new_k:
+                if 'attentions.0' in new_k:
                     new_k = new_k.replace(
                         'attentions.0', 'self_attn'
                     )
-                elif 'attentions.1' in k:
+                elif 'attentions.1' in new_k:
                     new_k = new_k.replace(
                         'attentions.1', 'cross_attn'
                     )
-                elif 'ffns.0' in k:
+                elif 'ffns.0' in new_k:
                     new_k = new_k.replace(
                         'ffns.0', 'ffn'
                     )
@@ -393,52 +400,62 @@ def test_ckpt():
 
     ckpt = remap_attention_keys(ckpt)
 
-    # img_backbone
-    img_backbone = MODELS.build(cfg.model.img_backbone)
-    backbone_ckpt = {k.replace('img_backbone.', ''): v for k, v in ckpt.items() if 'img_backbone' in k}
-    missing, unexpected = img_backbone.load_state_dict(backbone_ckpt, strict=False)
-    if len(missing) > 0 or len(unexpected) > 0:
-        print('[bold red]Some keys did not match for the img_backbone[/bold red]')
-        print(f'missing keys: {missing}')
-        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    else:
-        print('[bold green]All keys matched successfully for the img_backbone[/bold green]')
+    # # img_backbone
+    # img_backbone = MODELS.build(cfg.model.img_backbone)
+    # backbone_ckpt = {k.replace('img_backbone.', ''): v for k, v in ckpt.items() if 'img_backbone' in k}
+    # missing, unexpected = img_backbone.load_state_dict(backbone_ckpt, strict=False)
+    # if len(missing) > 0 or len(unexpected) > 0:
+    #     print('[bold red]Some keys did not match for the img_backbone[/bold red]')
+    #     print(f'missing keys: {missing}')
+    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    # else:
+    #     print('[bold green]All keys matched successfully for the img_backbone[/bold green]')
 
-    # img_neck
-    img_neck = MODELS.build(cfg.model.img_neck)
-    neck_ckpt = {k.replace('img_neck.', ''): v for k, v in ckpt.items() if 'img_neck' in k}
-    missing, unexpected = img_neck.load_state_dict(neck_ckpt, strict=False)
-    if len(missing) > 0 or len(unexpected) > 0:
-        print('[bold red]Some keys did not match for the img_neck[/bold red]')
-        print(f'missing keys: {missing}')
-        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    else:   
-        print('[bold green]All keys matched successfully for the img_neck[/bold green]')
+    # # img_neck
+    # img_neck = MODELS.build(cfg.model.img_neck)
+    # neck_ckpt = {k.replace('img_neck.', ''): v for k, v in ckpt.items() if 'img_neck' in k}
+    # missing, unexpected = img_neck.load_state_dict(neck_ckpt, strict=False)
+    # if len(missing) > 0 or len(unexpected) > 0:
+    #     print('[bold red]Some keys did not match for the img_neck[/bold red]')
+    #     print(f'missing keys: {missing}')
+    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    # else:   
+    #     print('[bold green]All keys matched successfully for the img_neck[/bold green]')
 
 
-    bevformer_encoder = MODELS.build(cfg.model.bevformer_encoder)
-    bevformer_encoder_ckpt={k.replace('pts_bbox_head.transformer.encoder.', ''): v
-                                    for k, v in ckpt.items()
-                                    if 'pts_bbox_head.transformer.encoder' in k}
-    missing, unexpected = bevformer_encoder.load_state_dict(bevformer_encoder_ckpt, strict=False)
-    if len(missing) > 0 or len(unexpected) > 0:
-        print('[bold red]Some keys did not match for the bevformer_encoder[/bold red]')
-        print(f'missing keys: {missing}')
-        print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    else:   
-        print('[bold green]All keys matched successfully for the bevformer_encoder[/bold green]')
+    # bevformer_encoder = MODELS.build(cfg.model.encoder)
+    # bevformer_encoder_ckpt={k.replace('pts_bbox_head.transformer.encoder.', ''): v
+    #                                 for k, v in ckpt.items()
+    #                                 if 'pts_bbox_head.transformer.encoder' in k}
+    # missing, unexpected = bevformer_encoder.load_state_dict(bevformer_encoder_ckpt, strict=False)
+    # if len(missing) > 0 or len(unexpected) > 0:
+    #     print('[bold red]Some keys did not match for the bevformer_encoder[/bold red]')
+    #     print(f'missing keys: {missing}')
+    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    # else:   
+    #     print('[bold green]All keys matched successfully for the bevformer_encoder[/bold green]')
 
-    bevformer_decoder = MODELS.build(cfg.model.bevformer_decoder)
-    bevformer_decoder_ckpt={k.replace('pts_bbox_head.transformer.decoder.', ''): v
-                                    for k, v in ckpt.items()
-                                    if 'pts_bbox_head.transformer.decoder' in k}
-    missing, unexpected = bevformer_decoder.load_state_dict(bevformer_decoder_ckpt, strict=False)
-    if len(missing) > 0 or len(unexpected) > 0:
+    # bevformer_decoder = MODELS.build(cfg.model.decoder)
+    # bevformer_decoder_ckpt={k.replace('pts_bbox_head.transformer.decoder.', ''): v
+    #                                 for k, v in ckpt.items()
+    #                                 if 'pts_bbox_head.transformer.decoder' in k}
+    # missing, unexpected = bevformer_decoder.load_state_dict(bevformer_decoder_ckpt, strict=False)
+    # if len(missing) > 0 or len(unexpected) > 0:
+    #     print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
+    #     print(f'missing keys: {missing}')
+    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
+    # else:   
+    #     print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
+
+    bevformer = MODELS.build(cfg.model)
+    missing, unexpected = bevformer.load_state_dict(ckpt, strict=False)
+    if len(missing) > 0:
         print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
         print(f'missing keys: {missing}')
         print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
     else:   
         print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
+    # print(f'bevformer: {bevformer}')
 
 if __name__ == '__main__':
     # main()
