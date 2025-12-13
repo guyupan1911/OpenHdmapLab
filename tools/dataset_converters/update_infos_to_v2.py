@@ -163,6 +163,8 @@ def get_empty_standard_data_info(
         sample_idx=None,
         # (str, optional): '000010'
         token=None,
+        scene_token=None,
+        can_bus=None,
         **get_single_image_sweep(camera_types),
         # (dict, optional): dict contains information
         # of LiDAR point cloud frame.
@@ -279,6 +281,8 @@ def update_nuscenes_infos(pkl_path, out_dir):
             camera_types=camera_types)
         temp_data_info['sample_idx'] = i
         temp_data_info['token'] = ori_info_dict['token']
+        temp_data_info['scene_token'] = ori_info_dict['scene_token']
+        temp_data_info['can_bus'] = ori_info_dict['can_bus']
         temp_data_info['ego2global'] = convert_quaternion_to_matrix(
             ori_info_dict['ego2global_rotation'],
             ori_info_dict['ego2global_translation'])
