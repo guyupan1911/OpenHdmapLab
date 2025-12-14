@@ -45,16 +45,16 @@ train_pipeline = [
                 to_float32=True,
                 num_views=6,
                 backend_args=backend_args),
-            # dict(
-            #     type='mmdet3d.LoadPointsFromFile',
-            #     coord_type='LIDAR',
-            #     load_dim=5,
-            #     use_dim=5,
-            #     backend_args=backend_args),
-            # dict(
-            #     type='mmdet3d.LoadPointsFromMultiSweeps',
-            #     sweeps_num=10,
-            #     backend_args=backend_args),
+            dict(
+                type='mmdet3d.LoadPointsFromFile',
+                coord_type='LIDAR',
+                load_dim=5,
+                use_dim=5,
+                backend_args=backend_args),
+            dict(
+                type='mmdet3d.LoadPointsFromMultiSweeps',
+                sweeps_num=10,
+                backend_args=backend_args),
         ]),
     dict(
         type='mmdet3d.LoadAnnotations3D',

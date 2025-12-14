@@ -282,6 +282,7 @@ def update_nuscenes_infos(pkl_path, out_dir):
         temp_data_info['sample_idx'] = i
         temp_data_info['token'] = ori_info_dict['token']
         temp_data_info['scene_token'] = ori_info_dict['scene_token']
+        temp_data_info['frame_index'] = ori_info_dict['frame_index']
         temp_data_info['can_bus'] = ori_info_dict['can_bus']
         temp_data_info['ego2global'] = convert_quaternion_to_matrix(
             ori_info_dict['ego2global_rotation'],
@@ -341,6 +342,10 @@ def update_nuscenes_infos(pkl_path, out_dir):
             empty_img_info['lidar2cam'] = lidar2sensor.astype(
                 np.float32).tolist()
             temp_data_info['images'][cam] = empty_img_info
+            lidar2img = np.eye(4)
+            lidar2img[:3, :3] = ori_info_dict['cams'][cam]['cam_intrinsic']
+            lidar2img = lidar2img @ lidar2sensor
+            empty_img_info['lidar2img'] = lidar2img.astype(np.float32).tolist()
         ignore_class_name = set()
         if 'gt_boxes' in ori_info_dict:
             num_instances = ori_info_dict['gt_boxes'].shape[0]

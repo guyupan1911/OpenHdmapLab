@@ -11,5 +11,10 @@ class PrintDict(BaseTransform):
 
     def transform(self, results: dict) -> Optional[dict]:
         print(results.keys())
+        print(results['inputs'].keys())
+        print(results['data_samples'].keys())
+        print(results['data_samples'].metainfo.keys())
+        # print(f"img type :{type(results['img'])}")
+        # print(results['img'].shape)
       
         return results

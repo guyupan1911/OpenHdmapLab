@@ -182,16 +182,14 @@ def visualize_data_samples(data_samples):
     img_paths = data_samples['data_samples'].metainfo['img_path']
     points = data_samples['inputs']['points'].numpy() # n * 4
 
+    print(len(data_samples['data_samples'].metainfo['lidar2img']))
 
     # render pointcloud on the image
     for index in range(len(img_paths)):
         img = mmcv.imread(img_paths[index])
         img = mmcv.imconvert(img, 'bgr', 'rgb')
-        cam2img = np.array(data_samples['data_samples'].metainfo['cam2img'][index], dtype=np.float32) # 3*3
-        lidar2cam = np.array(data_samples['data_samples'].metainfo['lidar2cam'][index], dtype=np.float32) # 4*4
-        lidar2img = np.eye(4)
-        lidar2img[:3,:3] = cam2img
-        lidar2img = lidar2img @ lidar2cam
+     
+        lidar2img = np.array(data_samples['data_samples'].metainfo['lidar2img'][index], dtype=np.float32)
 
         points_lidar = np.concatenate([points[:, :3], np.ones((points.shape[0], 1), dtype=points.dtype)], axis=1)
         points_img = (lidar2img @ points_lidar.T).T
@@ -216,54 +214,10 @@ def test_nuscenes():
     from mmdet3d.registry import DATASETS
     args = parse_args()
     cfg = setup_config(args)
-    nuscenes_dataset = DATASETS.build(cfg.val_dataloader.dataset)
+    nuscenes_dataset = DATASETS.build(cfg.train_dataloader.dataset)
 
-    visualize_data_samples(nuscenes_dataset[20])
+    visualize_data_samples(nuscenes_dataset[0])
 
-    # metainfo = nuscenes_dataset[30]['data_samples'].metainfo;
-    # print(metainfo.keys())
-    # lidar_path = metainfo['lidar_path']
-    # points = nuscenes_dataset[30]['inputs']['points'].numpy()
-    # print(f'points: {points.shape}')
-    # print(f'lidar_path: {lidar_path}')
-    # img_path = metainfo['img_path'][0]
-    # img = mmcv.imread(img_path)
-    # img = mmcv.imconvert(img, 'bgr', 'rgb')
-    # print(f'img_path: {img_path}')
-    # print(img.shape)
-
-    # lidar2cam = np.array(metainfo['lidar2cam'][0], dtype=np.float32)
-    # cam2img = np.array(metainfo['cam2img'][0], dtype=np.float32)
-
-    # lidar2img = np.eye(4)
-    # lidar2img[:3,:3] = cam2img
-    # lidar2img = lidar2img @ lidar2cam
-
-    # print(f'lidar2img: {lidar2img.shape}')
-
-    # visualizer = Det3DLocalVisualizer()
-    # visualizer.set_points(points)
-    # # visualizer.set_image(img)
-    # ## project points to image
-    # pts = points[:, :3]
-    # pts_hom = np.concatenate([pts, np.ones((pts.shape[0], 1), dtype=pts.dtype)], axis=1)  # [N,4]
-
-    # # 2. 投影到像素坐标
-    # proj = (lidar2img @ pts_hom.T).T   # [N,4]，里面是 [u*z, v*z, z, 1]
-    # u = proj[:, 0] / proj[:, 2]
-    # v = proj[:, 1] / proj[:, 2]
-    # z = proj[:, 2]
-
-    # # 3. 构造 mask：在图像内且 z>0
-    # mask = (u >= 0) & (u < 1600) & (v >= 0) & (v < 900) & (z > 0)
-
-    # # 4. 取满足条件的点（可以是 xyz 或原始 xyzi）
-    # valid_points = points[mask]   
-    
-
-    # # print(projected_points.shape)
-    # # visualizer.draw_points_on_image(valid_points[:, 0:3], lidar2img)
-    # visualizer.show()
 
 
 

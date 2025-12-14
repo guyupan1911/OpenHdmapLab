@@ -193,7 +193,8 @@ def _fill_trainval_infos(nusc,
     """
     train_nusc_infos = []
     val_nusc_infos = []
-
+    frame_index = 0
+    prev_frame_scene_token = None
     for sample in mmengine.track_iter_progress(nusc.sample):
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -205,6 +206,12 @@ def _fill_trainval_infos(nusc,
         mmengine.check_file_exist(lidar_path)
         can_bus = _get_can_bus_info(nusc, nusc_can_bus, sample)
 
+        if sample['scene_token'] != prev_frame_scene_token:
+            frame_index = 0
+            prev_frame_scene_token = sample['scene_token']
+        else:
+            frame_index += 1
+
         info = {
             'lidar_path': lidar_path,
             'num_features': 5,
@@ -215,6 +222,7 @@ def _fill_trainval_infos(nusc,
             'sweeps': [],
             'cams': dict(),
             'scene_token': sample['scene_token'],
+            'frame_index': frame_index,
             'lidar2ego_translation': cs_record['translation'],
             'lidar2ego_rotation': cs_record['rotation'],
             'ego2global_translation': pose_record['translation'],

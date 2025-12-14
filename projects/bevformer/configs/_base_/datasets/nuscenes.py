@@ -47,24 +47,21 @@ train_pipeline = [
         load_dim=5,
         use_dim=5,
         backend_args=backend_args),
+    dict(type='mmdet3d.LoadMultiViewImageFromFiles',
+         to_float32=True,
+         num_views=6,
+         backend_args=backend_args),
     dict(
         type='mmdet3d.LoadPointsFromMultiSweeps',
         sweeps_num=10,
         backend_args=backend_args),
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='mmdet3d.LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
     dict(
-        type='GlobalRotScaleTrans',
-        rot_range=[-0.3925, 0.3925],
-        scale_ratio_range=[0.95, 1.05],
-        translation_std=[0, 0, 0]),
-    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
-    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectNameFilter', classes=class_names),
-    dict(type='PointShuffle'),
-    dict(
-        type='Pack3DDetInputs',
-        keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
+        type='mmdet3d.Pack3DDetInputs',
+        keys=['points', 'gt_bboxes_3d', 'gt_labels_3d']),
+    dict(type='mmhdmap.PrintDict')
 ]
 test_pipeline = [
     dict(
@@ -120,7 +117,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='nuscenes-mini_infos_train.pkl',
-        # pipeline=train_pipeline,
+        pipeline=train_pipeline,
         metainfo=metainfo,
         modality=input_modality,
         test_mode=False,
