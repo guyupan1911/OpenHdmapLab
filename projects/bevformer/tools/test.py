@@ -179,17 +179,15 @@ def visualize_data_samples(data_samples):
     1. visualize front view images
     """
 
-    img_paths = data_samples['data_samples'].metainfo['img_path']
-    points = data_samples['inputs']['points'].numpy() # n * 4
-
-    print(len(data_samples['data_samples'].metainfo['lidar2img']))
+    img_paths = data_samples['data_samples'].temporal_metainfos[0]['img_path']
+    points = data_samples['inputs']['points'][-1].numpy() # n * 4
 
     # render pointcloud on the image
     for index in range(len(img_paths)):
         img = mmcv.imread(img_paths[index])
         img = mmcv.imconvert(img, 'bgr', 'rgb')
      
-        lidar2img = np.array(data_samples['data_samples'].metainfo['lidar2img'][index], dtype=np.float32)
+        lidar2img = np.array(data_samples['data_samples'].temporal_metainfos[0]['lidar2img'][index], dtype=np.float32)
 
         points_lidar = np.concatenate([points[:, :3], np.ones((points.shape[0], 1), dtype=points.dtype)], axis=1)
         points_img = (lidar2img @ points_lidar.T).T
@@ -214,9 +212,10 @@ def test_nuscenes():
     from mmdet3d.registry import DATASETS
     args = parse_args()
     cfg = setup_config(args)
-    nuscenes_dataset = DATASETS.build(cfg.train_dataloader.dataset)
+    nuscenes_dataset = DATASETS.build(cfg.dataset)
 
-    visualize_data_samples(nuscenes_dataset[0])
+    
+    visualize_data_samples(nuscenes_dataset[30])
 
 
 

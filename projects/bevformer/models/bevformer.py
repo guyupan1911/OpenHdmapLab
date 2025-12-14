@@ -13,7 +13,7 @@ from mmdet.utils import OptConfigType, ConfigType, OptMultiConfig
 from mmhdmap.registry import MODELS
 
 
-@MODELS.register_module()
+# @MODELS.register_module()
 class BEVFormer(BaseModel):
 
     def __init__(self,

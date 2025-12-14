@@ -16,8 +16,7 @@ class LoadMultiFrameData(BaseTransform):
     
     def transform(self, results: dict) -> dict:
         
-        if 'multi_frame_data' not in results:
-            return self.transforms(results)
+        assert 'multi_frame_data' in results, "multi_frame_data not found in results"
         
         multi_frame_data = results['multi_frame_data']
         # Ensure multi_frame_data is OrderedDict and sorted by frame_idx

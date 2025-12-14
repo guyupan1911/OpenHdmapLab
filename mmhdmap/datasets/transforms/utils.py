@@ -13,7 +13,10 @@ class PrintDict(BaseTransform):
         print(results.keys())
         print(results['inputs'].keys())
         print(results['data_samples'].keys())
-        print(results['data_samples'].metainfo.keys())
+        # print(results['multi_frame_data'][0].keys())
+        # print(results['inputs'].keys())
+        # print(results['data_samples'].keys())
+        # print(results['data_samples'].metainfo.keys())
         # print(f"img type :{type(results['img'])}")
         # print(results['img'].shape)
       

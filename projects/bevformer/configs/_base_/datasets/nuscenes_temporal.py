@@ -1,12 +1,9 @@
-from mmdet3d.datasets.nuscenes_dataset import NuScenesDataset
 from projects.bevformer.datasets import NuScenesTemporalDataset
 
-from projects.bevformer.datasets.transforms import (PrintDict, LoadMultiFrameData, MultiFrameWrapper,
+from projects.bevformer.datasets.transforms import (LoadMultiFrameData, MultiFrameWrapper,
                                                     PackMultiFrame3DDetInputs)
 
-default_scope = 'mmdet3d'
-
-data_root = 'data/nuScenes-mini'
+data_root = 'data/nuscenes'
 
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
@@ -16,9 +13,10 @@ class_names = [
 ]
 metainfo = dict(classes=class_names)
 
-input_modality = dict(use_lidar=False, use_camera=True)
+input_modality = dict(use_lidar=True, use_camera=True)
 data_prefix = dict(
     pts='samples/LIDAR_TOP',
+    sweeps='sweeps/LIDAR_TOP',
     CAM_FRONT='samples/CAM_FRONT',
     CAM_FRONT_LEFT='samples/CAM_FRONT_LEFT',
     CAM_FRONT_RIGHT='samples/CAM_FRONT_RIGHT',
@@ -61,18 +59,19 @@ train_pipeline = [
         with_bbox_3d=True,
         with_label_3d=True,
         with_attr_label=False),
-    # dict(type=MultiFrameWrapper, transforms=train_transforms),
-    dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
-    dict(type=PrintDict),
-    dict(type=PackMultiFrame3DDetInputs, keys=['img', 'gt_bboxes_3d', 'gt_labels_3d'])
+    # # dict(type=MultiFrameWrapper, transforms=train_transforms),
+    # dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    # dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
+    # dict(type='mmhdmap.PrintDict'),
+    dict(type=PackMultiFrame3DDetInputs, keys=('img', 'points', 'gt_bboxes_3d', 'gt_labels_3d')),
+    # dict(type='mmhdmap.PrintDict')
 ]
 
 dataset = dict(
     type=NuScenesTemporalDataset,
     data_root=data_root,
     frames=(-3,-2,-1,0),
-    ann_file='nuscenes_infos_temporal_train.pkl',
+    ann_file='nuscenes-mini_infos_train.pkl',
     pipeline=train_pipeline,
     load_type='frame_based',
     metainfo=metainfo,
