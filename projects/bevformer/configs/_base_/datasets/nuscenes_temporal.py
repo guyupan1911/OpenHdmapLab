@@ -59,12 +59,14 @@ train_pipeline = [
         with_bbox_3d=True,
         with_label_3d=True,
         with_attr_label=False),
-    # # dict(type=MultiFrameWrapper, transforms=train_transforms),
-    # dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    # dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
-    # dict(type='mmhdmap.PrintDict'),
+    # dict(type=MultiFrameWrapper, transforms=train_transforms), TODO: need check
+    dict(type='mmdet3d.ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='mmdet3d.ObjectNameFilter', classes=class_names),
     dict(type=PackMultiFrame3DDetInputs, keys=('img', 'points', 'gt_bboxes_3d', 'gt_labels_3d')),
-    # dict(type='mmhdmap.PrintDict')
+    # return
+    # inputs['img'] : (temporal_queue, 6, 3, h, w)
+    # inputs['points'] : list of points from (-3, -2, -1, 0)
+    # data_samples['temporal_metainfos'] : dict of metainfos for each frame, key is frame_idx
 ]
 
 dataset = dict(
