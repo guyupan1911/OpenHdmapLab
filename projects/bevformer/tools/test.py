@@ -11,8 +11,8 @@ from rich import print
 
 from mmengine.config import Config
 from mmengine.runner import Runner, load_checkpoint
-from mmdet.engine.hooks.utils import trigger_visualization_hook
-from mmdet.visualization import DetLocalVisualizer
+from mmdet3d.visualization import Det3DLocalVisualizer
+import mmcv
 
 from mmhdmap.registry import MODELS
 
@@ -30,6 +30,20 @@ def parse_args():
                        help='number of samples to visualize (default: 1)')
     parser.add_argument('--mode', type=str, choices=['test', 'val', 'train'], 
                        default='test', help='running mode (default: test)')
+    parser.add_argument(
+        '--task',
+        type=str,
+        default='multi-view_det',
+        choices=[
+            'mono_det', 'multi-view_det', 'lidar_det', 'lidar_seg',
+            'multi-modality_det'
+        ],
+        help='task type for visualization hook')
+    parser.add_argument(
+        '--score-thr',
+        type=float,
+        default=0.3,
+        help='score threshold for visualization')
     return parser.parse_args()
 
 
@@ -52,6 +66,35 @@ def setup_config(args) -> Config:
     if args.show:
         cfg = trigger_visualization_hook(cfg, args)
     
+    return cfg
+
+
+def trigger_visualization_hook(cfg, args):
+    default_hooks = cfg.default_hooks
+    if 'visualization' in default_hooks:
+        visualization_hook = default_hooks['visualization']
+        # Turn on visualization
+        visualization_hook['draw'] = True
+        if args.show:
+            visualization_hook['show'] = True
+            visualization_hook['wait_time'] = args.wait_time
+        if args.show_dir:
+            visualization_hook['test_out_dir'] = args.show_dir
+        all_task_choices = [
+            'mono_det', 'multi-view_det', 'lidar_det', 'lidar_seg',
+            'multi-modality_det'
+        ]
+        assert args.task in all_task_choices, 'You must set '\
+            f"'--task' in {all_task_choices} in the command " \
+            'if you want to use visualization hook'
+        visualization_hook['vis_task'] = args.task
+        visualization_hook['score_thr'] = args.score_thr
+    else:
+        raise RuntimeError(
+            'VisualizationHook must be included in default_hooks.'
+            'refer to usage '
+            '"visualization=dict(type=\'VisualizationHook\')"')
+
     return cfg
 
 
@@ -117,7 +160,7 @@ def main():
     # Run based on mode
     if args.mode == 'test':
         if args.show:
-            visualizer = DetLocalVisualizer()
+            visualizer = Det3DLocalVisualizer()
             visualize_results(
                 runner.model, 
                 runner.test_dataloader, 
@@ -131,49 +174,98 @@ def main():
         runner.train()
 
 
+def visualize_data_samples(data_samples):
+    """
+    1. visualize front view images
+    """
+
+    img_paths = data_samples['data_samples'].metainfo['img_path']
+    points = data_samples['inputs']['points'].numpy() # n * 4
+
+
+    # render pointcloud on the image
+    for index in range(len(img_paths)):
+        img = mmcv.imread(img_paths[index])
+        img = mmcv.imconvert(img, 'bgr', 'rgb')
+        cam2img = np.array(data_samples['data_samples'].metainfo['cam2img'][index], dtype=np.float32) # 3*3
+        lidar2cam = np.array(data_samples['data_samples'].metainfo['lidar2cam'][index], dtype=np.float32) # 4*4
+        lidar2img = np.eye(4)
+        lidar2img[:3,:3] = cam2img
+        lidar2img = lidar2img @ lidar2cam
+
+        points_lidar = np.concatenate([points[:, :3], np.ones((points.shape[0], 1), dtype=points.dtype)], axis=1)
+        points_img = (lidar2img @ points_lidar.T).T
+        points_u = points_img[:, 0] / points_img[:, 2]
+        points_v = points_img[:, 1] / points_img[:, 2]
+        mask = ((points_u >= 0)
+                & (points_u < 1600) # x in [0, 1600)
+                & (points_v >= 0)
+                & (points_v < 900)
+                & (points_img[:, 2] > 0)) # z > 0
+        valid_points = np.stack([points_u[mask], points_v[mask]], axis=1)
+
+        # render valid points on the image
+        import matplotlib.pyplot as plt    
+        plt.imshow(img)
+        plt.scatter(valid_points[:, 0], valid_points[:, 1], c='green', s=1)
+        plt.show()
+
+
+
 def test_nuscenes():
-    from mmdet3d.registry import MODELS
+    from mmdet3d.registry import DATASETS
     args = parse_args()
     cfg = setup_config(args)
-    nuscenes_dataset = MODELS.build(cfg.dataset)
+    nuscenes_dataset = DATASETS.build(cfg.val_dataloader.dataset)
+
+    visualize_data_samples(nuscenes_dataset[20])
+
+    # metainfo = nuscenes_dataset[30]['data_samples'].metainfo;
+    # print(metainfo.keys())
+    # lidar_path = metainfo['lidar_path']
+    # points = nuscenes_dataset[30]['inputs']['points'].numpy()
+    # print(f'points: {points.shape}')
+    # print(f'lidar_path: {lidar_path}')
+    # img_path = metainfo['img_path'][0]
+    # img = mmcv.imread(img_path)
+    # img = mmcv.imconvert(img, 'bgr', 'rgb')
+    # print(f'img_path: {img_path}')
+    # print(img.shape)
+
+    # lidar2cam = np.array(metainfo['lidar2cam'][0], dtype=np.float32)
+    # cam2img = np.array(metainfo['cam2img'][0], dtype=np.float32)
+
+    # lidar2img = np.eye(4)
+    # lidar2img[:3,:3] = cam2img
+    # lidar2img = lidar2img @ lidar2cam
+
+    # print(f'lidar2img: {lidar2img.shape}')
+
+    # visualizer = Det3DLocalVisualizer()
+    # visualizer.set_points(points)
+    # # visualizer.set_image(img)
+    # ## project points to image
+    # pts = points[:, :3]
+    # pts_hom = np.concatenate([pts, np.ones((pts.shape[0], 1), dtype=pts.dtype)], axis=1)  # [N,4]
+
+    # # 2. 投影到像素坐标
+    # proj = (lidar2img @ pts_hom.T).T   # [N,4]，里面是 [u*z, v*z, z, 1]
+    # u = proj[:, 0] / proj[:, 2]
+    # v = proj[:, 1] / proj[:, 2]
+    # z = proj[:, 2]
+
+    # # 3. 构造 mask：在图像内且 z>0
+    # mask = (u >= 0) & (u < 1600) & (v >= 0) & (v < 900) & (z > 0)
+
+    # # 4. 取满足条件的点（可以是 xyz 或原始 xyzi）
+    # valid_points = points[mask]   
     
-    print(f"Dataset length: {len(nuscenes_dataset)}")
-    
-    # Get sample data
-    sample_idx = 10
-    sample = nuscenes_dataset[sample_idx]
-    inputs = sample['inputs']
-    data_samples = sample['data_samples']
-    
-    # Print data structure info
-    print(f"\nSample {sample_idx} structure:")
-    print(f"  inputs keys: {list(inputs.keys())}")
-    if 'img' in inputs:
-        print(f"  img shape: {inputs['img'].shape}")
-        print(f"  img dtype: {inputs['img'].dtype}")
-    
-    if hasattr(data_samples, 'metainfo'):
-        print(f"  metainfo keys: {list(data_samples.metainfo.keys())}")
-        if 'img_norm_cfg' in data_samples.metainfo:
-            print(f"  img_norm_cfg: {data_samples.metainfo['img_norm_cfg']}")
-    
-    if hasattr(data_samples, 'gt_instances_3d'):
-        gt = data_samples.gt_instances_3d
-        print(f"  gt_instances_3d attributes: {[attr for attr in dir(gt) if not attr.startswith('_')]}")
-        if hasattr(gt, 'bboxes_3d'):
-            print(f"  gt_bboxes_3d: {gt.bboxes_3d}")
-        if hasattr(gt, 'labels_3d'):
-            print(f"  gt_labels_3d: {gt.labels_3d}")
-    
-    # Visualize
-    print("\nVisualizing multi-frame multi-view images...")
-    save_path = osp.join(cfg.work_dir, f'sample_{sample_idx}_visualization.png')
-    visualize_multi_frame_multi_view(
-        inputs, 
-        data_samples, 
-        save_path=save_path,
-        show=True
-    )
+
+    # # print(projected_points.shape)
+    # # visualizer.draw_points_on_image(valid_points[:, 0:3], lidar2img)
+    # visualizer.show()
+
+
 
 
 def test_ckpt():
