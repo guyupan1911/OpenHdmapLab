@@ -55,6 +55,7 @@ class PackMultiFrame3DDetInputs(Pack3DDetInputs):
             multi_frame_inputs.append(single_frame_result['inputs'])
             multi_frame_metainfos[k] = single_frame_result['data_samples'].metainfo
         packed_results['data_samples'].set_field(multi_frame_metainfos, 'temporal_metainfos')
+        packed_results['data_samples'].set_metainfo(multi_frame_metainfos[0])
 
         ## pack inputs
         if 'img' in self.keys:

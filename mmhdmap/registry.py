@@ -2,7 +2,9 @@ from mmengine.registry import MODELS as MMENGINE_MODELS
 from mmengine.registry import DATASETS as MMENGINE_DATASETS
 from mmengine.registry import METRICS as MMENGINE_METRICS
 from mmengine.registry import TRANSFORMS as MMENGINE_TRANSFORMS
-from mmengine.registry import TASK_UTILS as MMENGINE_TASK_UTILS  
+from mmengine.registry import TASK_UTILS as MMENGINE_TASK_UTILS
+from mmengine.registry import VISUALIZERS as MMENGINE_VISUALIZERS
+
 from mmengine.registry import Registry
 
 # manage all kinds of modules inheriting `nn.Module`
@@ -17,3 +19,9 @@ METRICS = Registry('metric', parent=MMENGINE_METRICS, locations=['mmhdmap.metric
 TRANSFORMS = Registry('transform', parent=MMENGINE_TRANSFORMS, locations=['mmhdmap.datasets.transforms'])
 
 TASK_UTILS = Registry('task util', parent=MMENGINE_TASK_UTILS, locations=['mmhdmap.models'])
+
+# manage visualizer
+VISUALIZERS = Registry(
+    'visualizer',
+    parent=MMENGINE_VISUALIZERS,
+    locations=['mmhdmap.visualization'])

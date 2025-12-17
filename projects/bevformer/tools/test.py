@@ -12,6 +12,7 @@ from rich import print
 from mmengine.config import Config
 from mmengine.runner import Runner, load_checkpoint
 from mmdet3d.visualization import Det3DLocalVisualizer
+from projects.bevformer.visualization import MultiFrameDet3DLocalVisualizer
 import mmcv
 
 from mmhdmap.registry import MODELS
@@ -215,7 +216,23 @@ def test_nuscenes():
     nuscenes_dataset = DATASETS.build(cfg.dataset)
 
     
-    visualize_data_samples(nuscenes_dataset[30])
+    # visualize_data_samples(nuscenes_dataset[30])
+
+    local_visualizer = MultiFrameDet3DLocalVisualizer()
+    local_visualizer.dataset_meta = nuscenes_dataset.metainfo
+
+    data_input = nuscenes_dataset[0]['inputs']
+    data_sample = nuscenes_dataset[0]['data_samples']
+
+    local_visualizer.add_datasample(name='test_nuscenes',
+                                    data_input = data_input,
+                                    data_sample = data_sample,
+                                    vis_task='multi-modality_det',
+                                    draw_gt=True,
+                                    draw_pred=False,
+                                    show=True,
+                                    out_file='work_dirs/test_nuscenes_vis.png',
+                                    wait_time=-1)
 
 
 

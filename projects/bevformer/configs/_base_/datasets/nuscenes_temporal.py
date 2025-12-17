@@ -49,10 +49,10 @@ train_pipeline = [
                 load_dim=5,
                 use_dim=5,
                 backend_args=backend_args),
-            dict(
-                type='mmdet3d.LoadPointsFromMultiSweeps',
-                sweeps_num=10,
-                backend_args=backend_args),
+            # dict(
+            #     type='mmdet3d.LoadPointsFromMultiSweeps',
+            #     sweeps_num=10,
+            #     backend_args=backend_args),
         ]),
     dict(
         type='mmdet3d.LoadAnnotations3D',
