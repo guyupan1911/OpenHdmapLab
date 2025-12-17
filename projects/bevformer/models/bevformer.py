@@ -1,4 +1,4 @@
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple, Dict
 
 import torch
 from torch import Tensor
@@ -13,7 +13,7 @@ from mmdet.utils import OptConfigType, ConfigType, OptMultiConfig
 from mmhdmap.registry import MODELS
 
 
-# @MODELS.register_module()
+@MODELS.register_module()
 class BEVFormer(BaseModel):
 
     def __init__(self,
@@ -117,8 +117,10 @@ class BEVFormer(BaseModel):
         
         # TODO: use history bev
 
-        # only use current frame
-        img_feats = self.extract_img_feat(batch_inputs[:,-1].unsqueeze(1))
+        # only use current frame   
+        print(f'batch_inputs: {batch_inputs["imgs"].shape}')
+        # img_feats = self.extract_img_feat(batch_inputs['img'])
+        return
 
         head_inputs_dict = self.forward_transformer(img_feats, batch_data_samples)
 

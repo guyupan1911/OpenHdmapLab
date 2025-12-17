@@ -1,6 +1,6 @@
 from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
-from projects.bevformer.models import (
+from projects.bevformer.models import (TemporalDet3DDataPreprocessor,
     BEVFormer, TemporalSelfAttention, SpatialCrossAttention,
     BEVFormerEncoder, BEVFormerEncoderLayer, BEVFormerDecoder)
 
@@ -12,6 +12,12 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
 model = dict(
     type=BEVFormer,
+    data_preprocessor=dict(
+        type=TemporalDet3DDataPreprocessor,
+        bgr_to_rgb=True,
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        pad_size_divisor=1),
     img_backbone=dict(
         type=ResNet,
         depth=50,

@@ -4,6 +4,7 @@ import os.path as osp
 
 import torch
 import numpy as np
+from torch.utils.data import DataLoader
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -11,11 +12,12 @@ from rich import print
 
 from mmengine.config import Config
 from mmengine.runner import Runner, load_checkpoint
+from mmengine.dataset.utils import pseudo_collate
 from mmdet3d.visualization import Det3DLocalVisualizer
 from projects.bevformer.visualization import MultiFrameDet3DLocalVisualizer
 import mmcv
 
-from mmhdmap.registry import MODELS
+from mmhdmap.registry import MODELS, DATASETS
 
 def parse_args():
     """Parse command line arguments."""
@@ -175,54 +177,18 @@ def main():
         runner.train()
 
 
-def visualize_data_samples(data_samples):
-    """
-    1. visualize front view images
-    """
-
-    img_paths = data_samples['data_samples'].temporal_metainfos[0]['img_path']
-    points = data_samples['inputs']['points'][-1].numpy() # n * 4
-
-    # render pointcloud on the image
-    for index in range(len(img_paths)):
-        img = mmcv.imread(img_paths[index])
-        img = mmcv.imconvert(img, 'bgr', 'rgb')
-     
-        lidar2img = np.array(data_samples['data_samples'].temporal_metainfos[0]['lidar2img'][index], dtype=np.float32)
-
-        points_lidar = np.concatenate([points[:, :3], np.ones((points.shape[0], 1), dtype=points.dtype)], axis=1)
-        points_img = (lidar2img @ points_lidar.T).T
-        points_u = points_img[:, 0] / points_img[:, 2]
-        points_v = points_img[:, 1] / points_img[:, 2]
-        mask = ((points_u >= 0)
-                & (points_u < 1600) # x in [0, 1600)
-                & (points_v >= 0)
-                & (points_v < 900)
-                & (points_img[:, 2] > 0)) # z > 0
-        valid_points = np.stack([points_u[mask], points_v[mask]], axis=1)
-
-        # render valid points on the image
-        import matplotlib.pyplot as plt    
-        plt.imshow(img)
-        plt.scatter(valid_points[:, 0], valid_points[:, 1], c='green', s=1)
-        plt.show()
-
-
-
 def test_nuscenes():
     from mmdet3d.registry import DATASETS
     args = parse_args()
     cfg = setup_config(args)
     nuscenes_dataset = DATASETS.build(cfg.dataset)
 
-    
-    # visualize_data_samples(nuscenes_dataset[30])
 
     local_visualizer = MultiFrameDet3DLocalVisualizer()
     local_visualizer.dataset_meta = nuscenes_dataset.metainfo
 
-    data_input = nuscenes_dataset[0]['inputs']
-    data_sample = nuscenes_dataset[0]['data_samples']
+    data_input = nuscenes_dataset[200]['inputs']
+    data_sample = nuscenes_dataset[200]['data_samples']
 
     local_visualizer.add_datasample(name='test_nuscenes',
                                     data_input = data_input,
@@ -233,9 +199,6 @@ def test_nuscenes():
                                     show=True,
                                     out_file='work_dirs/test_nuscenes_vis.png',
                                     wait_time=-1)
-
-
-
 
 
 def test_ckpt():
@@ -348,7 +311,21 @@ def test_ckpt():
         print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
     # print(f'bevformer: {bevformer}')
 
+    nuscenes_dataset = DATASETS.build(cfg.dataset)
+    print(f'dataset size: {len(nuscenes_dataset)}')
+
+
+    train_dataloader = DataLoader(nuscenes_dataset, batch_size=1, shuffle=False, collate_fn=pseudo_collate)
+    for idx, data_batch in enumerate(train_dataloader):
+        # print(data_batch.keys())
+        results = bevformer.test_step(data_batch)
+        break
+
+
+
+
+
 if __name__ == '__main__':
     # main()
-    test_nuscenes()
-    # test_ckpt()
+    # test_nuscenes()
+    test_ckpt()
