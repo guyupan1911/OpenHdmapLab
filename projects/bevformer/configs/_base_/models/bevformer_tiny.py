@@ -12,6 +12,9 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
 model = dict(
     type=BEVFormer,
+    bev_h=50,
+    bev_w=50,
+    num_query=900,
     data_preprocessor=dict(
         type=TemporalDet3DDataPreprocessor,
         bgr_to_rgb=True,
@@ -35,7 +38,7 @@ model = dict(
         add_extra_convs='on_output',
         num_outs=num_levels,
         relu_before_extra_convs=True),
-    encoder=dict(
+    bev_encoder=dict(
         type=BEVFormerEncoder,
         num_layers=3,
         pc_range=point_cloud_range,
@@ -79,4 +82,10 @@ model = dict(
                 embed_dims=256,
                 feedforward_channels=512,
                 ffn_drop=0.1))),
+    positional_encoding=dict(
+        type='mmdet.LearnedPositionalEncoding',
+        num_feats=128,
+        row_num_embed=50,
+        col_num_embed=50,
+    )
 )

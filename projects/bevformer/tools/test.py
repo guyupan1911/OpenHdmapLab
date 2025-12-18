@@ -220,6 +220,11 @@ def test_ckpt():
                 new_k = new_k.replace('transformer.', '')
 
             if 'encoder.layers' in new_k:
+                if 'encoder' in new_k:
+                    new_k = new_k.replace(
+                        'encoder', 'bev_encoder'
+                    )
+
                 if 'attentions.0' in new_k:
                     # attentions.0 → temporal_self_attn
                     new_k = new_k.replace(
@@ -303,26 +308,26 @@ def test_ckpt():
 
     bevformer = MODELS.build(cfg.model)
     missing, unexpected = bevformer.load_state_dict(ckpt, strict=False)
-    if len(missing) > 0:
+    if len(missing) > 0 or len(unexpected) > 0:
         print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
         print(f'missing keys: {missing}')
         print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
     else:   
         print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
-    # print(f'bevformer: {bevformer}')
+    bevformer.cuda()
 
     nuscenes_dataset = DATASETS.build(cfg.dataset)
     print(f'dataset size: {len(nuscenes_dataset)}')
 
 
     train_dataloader = DataLoader(nuscenes_dataset, batch_size=1, shuffle=False, collate_fn=pseudo_collate)
-    for idx, data_batch in enumerate(train_dataloader):
-        # print(data_batch.keys())
-        results = bevformer.test_step(data_batch)
-        break
 
-
-
+    bevformer.eval()
+    with torch.no_grad():
+        for idx, data_batch in enumerate(train_dataloader):
+            # print(data_batch.keys())
+            results = bevformer.test_step(data_batch)
+            break
 
 
 if __name__ == '__main__':

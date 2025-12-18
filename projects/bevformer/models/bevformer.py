@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from mmengine.model import BaseModel
+from mmdet3d.models.detectors import Base3DDetector
 from mmdet3d.structures.det3d_data_sample import (Det3DDataSample, SampleList,
                                                   OptSampleList, ForwardResults)
 from mmdet3d.utils.typing_utils import InstanceList
@@ -14,21 +14,26 @@ from mmhdmap.registry import MODELS
 
 
 @MODELS.register_module()
-class BEVFormer(BaseModel):
+class BEVFormer(Base3DDetector):
 
     def __init__(self,
                  img_backbone: ConfigType,
                  img_neck: OptConfigType = None,
-                 encoder: OptConfigType = None,
+                 bev_encoder: OptConfigType = None,
                  decoder: OptConfigType = None,
                  bbox_head: OptConfigType = None,
                  positional_encoding: OptConfigType = None,
                  with_box_refine: bool = False,
+                 as_two_stage: bool = False,
+                 embed_dims: int = 256,
                  num_feature_levels: int = 4,
+                 bev_h: int = 30,
+                 bev_w: int = 30,
+                 num_query: int = 900,
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
-                 data_preprocessor: OptConfigType = None,
                  video_test_mode: bool = False,
+                 data_preprocessor: OptConfigType = None,
                  init_cfg: OptMultiConfig = None,
                  **kwargs) -> None:
         
@@ -36,13 +41,19 @@ class BEVFormer(BaseModel):
             data_preprocessor=data_preprocessor,
             init_cfg = init_cfg)
         
+        self.embed_dims = embed_dims
+        self.num_query = num_query
+        self.bev_h = bev_h
+        self.bev_w = bev_w
+
         # bbox_head.update(train_cfg=train_cfg)
         # bbox_head.update(test_cfg=test_cfg)
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
-        self.encoder = encoder
+        self.bev_encoder = bev_encoder
         self.decoder = decoder
-        self.positional_encoding = positional_encoding
+        self.with_box_refine = with_box_refine
+        self.as_two_stage = as_two_stage
 
         # TODO: use grid mask
 
@@ -60,29 +71,51 @@ class BEVFormer(BaseModel):
         if img_neck is not None:
             self.img_neck = MODELS.build(img_neck)
         # self.bbox_head = MODELS.build(bbox_head)
+        self.positional_encoding = MODELS.build(positional_encoding)
         self._init_layers()
     
     def _init_layers(self) -> None:
 
-        self.encoder = MODELS.build(self.encoder)
+        self.bev_encoder = MODELS.build(self.bev_encoder)
         self.decoder = MODELS.build(self.decoder)
 
+        if not self.as_two_stage:
+            self.bev_embedding = nn.Embedding(
+                self.bev_h * self.bev_w, self.embed_dims)
+            self.query_embedding = nn.Embedding(
+                self.num_query, self.embed_dims * 2)
 
-    def forward(self,
-                inputs: torch.Tensor,
-                data_samples: OptSampleList = None,
-                mode: str = 'tensor') -> ForwardResults:
+    def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
+        """
+        Args:
+            batch_inputs (Tensor): Image tensor, has shape
+                (bs, T, num_cams, C_in, H, W). T is temporal queue and
+                T[-1] is current frame.
+
+        Returns:
+            List[Tensor]: Multi level feature maps, each has shape
+                (bs, T, num_cams, C_out, H, W)
+        """
+        assert batch_inputs.dim() == 6
+        bs, T, num_cams, dim, H, W = batch_inputs.shape
+        batch_inputs = batch_inputs.view(bs * T * num_cams, dim, H, W)
+
+        x = self.img_backbone(batch_inputs)
+        if self.img_neck is not None:
+            img_feats = self.img_neck(x)
         
-        if mode == 'loss':
-            return self.loss(inputs, data_samples)
-        elif mode == 'predict':
-            return self.predict(inputs, data_samples)
-        elif mode == 'tensor':
-            return self._forward(inputs, data_samples)
-        else:
-            raise RuntimeError(f'Invalid mode "{mode}".'
-                                'Only support loss, predict and tensor mode')
-    
+        multi_level_img_feats = []
+        for img_feat in img_feats:
+            _, C, H, W = img_feat.shape
+            img_feat_reshape = img_feat.view(bs, T, num_cams, C, H, W)
+            multi_level_img_feats.append(img_feat_reshape)
+        
+        return multi_level_img_feats
+
+    def extract_feat(self, batch_inputs_dict: dict):
+        assert 'imgs' in batch_inputs_dict
+        return self.extract_img_feat(batch_inputs_dict['imgs'])
+
     def loss(self,
                 batch_inputs: Tensor,
                 batch_data_samples: SampleList) -> Union[dict, tuple]:
@@ -95,7 +128,7 @@ class BEVFormer(BaseModel):
 
 
         img_feats = self.extract_img_feat(batch_inputs)
-        head_inputs_dict = self.forward_transformer(img_feats,
+        head_inputs_dict = self.forward_bev_encoder(img_feats,
                                                     batch_data_samples)
         losses = self.bbox_head.loss(
             **head_inputs_dict, batch_data_samples=batch_data_samples)
@@ -118,12 +151,13 @@ class BEVFormer(BaseModel):
         # TODO: use history bev
 
         # only use current frame   
-        print(f'batch_inputs: {batch_inputs["imgs"].shape}')
-        # img_feats = self.extract_img_feat(batch_inputs['img'])
+        mlvl_img_feats = self.extract_feat(batch_inputs)
+        
+        bev_embedding = self.forward_bev_encoder(mlvl_img_feats, batch_data_samples)
+
+        print(f'bev_embedding: {bev_embedding.shape}')
+
         return
-
-        head_inputs_dict = self.forward_transformer(img_feats, batch_data_samples)
-
         results_list = self.bbox_head.predict(
             **head_inputs_dict,
             batch_data_samples=batch_data_samples)
@@ -136,93 +170,67 @@ class BEVFormer(BaseModel):
                  batch_inputs: Tensor,
                  batch_data_samples: OptSampleList = None):
         img_feats = self.extract_img_feat(batch_inputs)
-        head_inputs_dict = self.forward_transformer(img_feats,
+        head_inputs_dict = self.forward_bev_encoder(img_feats,
                                                     batch_data_samples)
         results = self.bbox_head.forward(**head_inputs_dict)
         return results
-        
-    def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
+
+
+    def forward_bev_encoder(self, mlvl_feats, batch_data_samples) -> Tensor:
         """
         Args:
-            batch_inputs (Tensor): Image tensor, has shape
-                (bs, T, num_cams, C_in, H, W). T is temporal queue and
-                T[-1] is current frame.
 
         Returns:
-            List[Tensor]: Multi level feature maps, each has shape
-                (bs, T, num_cams, C_out, H, W)
+            bev_embedding: bev features after temporal self attn and spatial cross attn,
+                has shape (bs, bev_h*bev_w, embed_dims)
         """
+        mlvl_feats = [feat[:, -1] for feat in mlvl_feats] # current frame
+        bs, num_cams, _, _, _ = mlvl_feats[0].shape
+
+        object_query = self.query_embedding.weight # (num_query, embed_dims)
+        bev_query = self.bev_embedding.weight # (bev_h*bev_w, embed_dims)
+        bev_mask = bev_query.new_zeros((bs, self.bev_h, self.bev_w)) 
+        bev_pos = self.positional_encoding(bev_mask) # (1, embed_dims, bev_h, bev_w)
+
+        print(f'object_query: {object_query.shape}')
+        print(f'bev_query: {bev_query.shape}')
+        print(f'bev_pos: {bev_pos.shape}')
+
+        # -> (bev_h*bev_w, bs, embed_dims)
+        bev_query = bev_query.unsqueeze(1).repeat(1, bs, 1)
+        # -> (bev_h*bev_w, 1, embed_dims)
+        bev_pos = bev_pos.flatten(2).permute(2, 0, 1)
+
+
+        feat_flatten = []
+        spatial_shapes = []
+        for lvl, feat in enumerate(mlvl_feats):
+            bs, num_cams, C, H, W = feat.shape
+            spatial_shape = (H, W)
+            # -> (num_cams, bs, H*W, C)
+            feat = feat.flatten(3).permute(1, 0, 3, 2)
+            spatial_shapes.append(spatial_shape)
+            feat_flatten.append(feat)
         
-        bs, T, num_cams, dim, H, W = batch_inputs.shape
-        batch_inputs = batch_inputs.view(bs * T * num_cams, dim, H, W)
+        # -> (num_cams, sum(HW), bs, embed_dims)
+        feat_flatten = torch.cat(feat_flatten, 2)
+        feat_flatten = feat_flatten.permute(0, 2, 1, 3)
 
-        x = self.img_backbone(batch_inputs)
-        if self.img_neck is not None:
-            img_feats = self.img_neck(x)
-        
-        multi_level_img_feats = []
-        for img_feat in img_feats:
-            _, C, H, W = img_feat.shape
-            img_feat_reshape = img_feat.view(bs, T, num_cams, C, H, W)
-            multi_level_img_feats.append(img_feat_reshape)
-        
-        return multi_level_img_feats
-        
+        # -> (num_levels, 2）
+        spatial_shapes = bev_pos.new_tensor(spatial_shapes, dtype=torch.long)
+        level_sizes = spatial_shapes.prod(dim=1)
+        level_start_index = torch.cat([level_sizes.new_zeros(1), level_sizes.cumsum(0)[:-1]])
 
-    def forward_transformer(self,
-                            img_feats: Tuple[Tensor],
-                            batch_data_samples: OptSampleList = None) -> Dict:
-        """
-        Args:
-            img_feats: (tuple[Tensor]): Tuple of feature maps from neck, each
-                has shape (bs, T, num_cams, dim, H, W)
-            batch_data_samples: (list[Det3dDataSample])
+        return self.bev_encoder(
+            bev_query=bev_query,
+            key=feat_flatten,
+            value=feat_flatten,
+            bev_pos=bev_pos,
+            bev_h=self.bev_h,
+            bev_w=self.bev_w,
+            spatial_shapes=spatial_shapes,
+            level_start_index=level_start_index,
+            prev_bev=None,
+            shift=None,
+            batch_data_samples=batch_data_samples)
 
-        Returns:
-            dict: A dictionary of bbox_head function inputs
-        """
-
-        encoder_inputs_dict, decoder_inputs_dict = self.pre_transformer(
-            img_feats, batch_data_samples)
-        
-        encoder_outputs_dict = self.forward_encoder(**encoder_inputs_dict)
-
-        tmp_dec_in, head_inputs_dict = self.pre_decoder(**encoder_outputs_dict)
-        decoder_inputs_dict.update(tmp_dec_in)
-
-        decoder_outputs_dict = self.forward_decoder(**decoder_inputs_dict)
-        head_inputs_dict.update(decoder_outputs_dict)
-
-        return head_inputs_dict
-
-    def pre_transformer(self,
-                        img_feats: Tuple[Tensor],
-                        batch_data_samples: OptSampleList = None) -> Tuple[Dict, Dict]:
-        """
-        prepare inputs for bevformer encoder, process canbus
-
-        Args:
-            img_feats: multi level img feats
-        
-        Returns:
-            tuple[dict, dict]: The first dict contains the inputs of encoder
-            and the second dict contains the inputs of decoder
-        """
-
-    def forward_encoder(self,
-                        feat: Tensor, feat_mask: Tensor,
-                        feat_pos: Tensor, **kwargs) -> Dict:
-        pass
-
-    def pre_decoder(self, memory: Tensor, **kwargs) -> Tuple[Dict, Dict]:
-        pass
-
-    def forward_decoder(self, query: Tensor, query_pos: Tensor, memory: Tensor,
-                        **kwargs) -> Dict:
-        pass
-
-    def add_pred_to_datasample(self,
-                                data_samples: SampleList,
-                                results_list: InstanceList) -> SampleList:
-        pass
-    
