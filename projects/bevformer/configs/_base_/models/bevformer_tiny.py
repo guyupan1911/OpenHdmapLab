@@ -2,7 +2,7 @@ from mmdet.models.backbones import ResNet
 from mmdet.models.necks import FPN
 from projects.bevformer.models import (TemporalDet3DDataPreprocessor,
     BEVFormer, TemporalSelfAttention, SpatialCrossAttention,
-    BEVFormerEncoder, BEVFormerEncoderLayer, BEVFormerDecoder)
+    BEVFormerEncoder, BEVFormerEncoderLayer, BEVFormerDecoder, BEVFormerHead, NMSFreeCoder)
 
 dim = 256
 num_levels = 1
@@ -87,5 +87,24 @@ model = dict(
         num_feats=128,
         row_num_embed=50,
         col_num_embed=50,
-    )
+    ),
+    bbox_head=dict(
+        type=BEVFormerHead,
+        bev_h=50,
+        bev_w=50,
+        loss_cls=dict(
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=2.0),
+        loss_bbox=dict(type='L1Loss', loss_weight=0.25),
+        loss_iou=dict(type='GIoULoss', loss_weight=0.0),
+        bbox_coder=dict(
+            type=NMSFreeCoder,
+            post_center_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
+            pc_range=point_cloud_range,
+            max_num=300,
+            num_classes=10
+        ))
 )

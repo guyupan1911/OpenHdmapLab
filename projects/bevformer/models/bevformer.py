@@ -46,8 +46,8 @@ class BEVFormer(Base3DDetector):
         self.bev_h = bev_h
         self.bev_w = bev_w
 
-        # bbox_head.update(train_cfg=train_cfg)
-        # bbox_head.update(test_cfg=test_cfg)
+        bbox_head.update(train_cfg=train_cfg)
+        bbox_head.update(test_cfg=test_cfg)
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.bev_encoder = bev_encoder
@@ -70,7 +70,7 @@ class BEVFormer(Base3DDetector):
         self.img_backbone = MODELS.build(img_backbone)
         if img_neck is not None:
             self.img_neck = MODELS.build(img_neck)
-        # self.bbox_head = MODELS.build(bbox_head)
+        self.bbox_head = MODELS.build(bbox_head)
         self.positional_encoding = MODELS.build(positional_encoding)
         self._init_layers()
     
@@ -155,16 +155,24 @@ class BEVFormer(Base3DDetector):
         # only use current frame   
         mlvl_img_feats = self.extract_feat(batch_inputs)
         
-        bev_embed = self.forward_bev_encoder(mlvl_img_feats, batch_data_samples)
+        bev_encoder_outputs = self.forward_bev_encoder(mlvl_img_feats, batch_data_samples)
 
-        print(f'bev_embed: {bev_embed.shape}')
+        decoder_outputs_dict = self.forward_decoder(bev_encoder_outputs['bev_embed'])
 
-        self.forward_decoder(bev_embed)
+        hidden_states = decoder_outputs_dict['hidden_states']
+        references = decoder_outputs_dict['references']
+
+        print(f'hidden_states: {hidden_states.shape}')
+        print(f'references: {len(references)}')
+
+        results_list = self.bbox_head.predict(
+            **decoder_outputs_dict,
+            batch_data_samples=batch_data_samples)
+
+        print(f'results_list: {results_list}')
 
         return
-        results_list = self.bbox_head.predict(
-            **head_inputs_dict,
-            batch_data_samples=batch_data_samples)
+
         batch_data_samples = self.add_pred_to_datasample(
             batch_data_samples, results_list)
         
@@ -222,7 +230,7 @@ class BEVFormer(Base3DDetector):
         level_sizes = spatial_shapes.prod(dim=1)
         level_start_index = torch.cat([level_sizes.new_zeros(1), level_sizes.cumsum(0)[:-1]])
 
-        return self.bev_encoder(
+        bev_embed = self.bev_encoder(
             bev_query=bev_query,
             key=feat_flatten,
             value=feat_flatten,
@@ -234,6 +242,10 @@ class BEVFormer(Base3DDetector):
             prev_bev=None,
             shift=None,
             batch_data_samples=batch_data_samples)
+        
+        return {
+            "bev_embed": bev_embed
+        }
 
     def forward_decoder(self, bev_embed) -> Tensor:
         # bev_embed: (bs, bev_h*bev_w, embed_dims)
@@ -254,8 +266,7 @@ class BEVFormer(Base3DDetector):
 
         init_reference_out = reference_points
 
-        # DeformableDetrTransformerDecoderLayer is configured with batch_first=True,
-        # so we keep (bs, num_query, embed_dims) and (bs, bev_h*bev_w, embed_dims)
+       
         inter_states, inter_references = self.decoder(
             query=query,
             key=None,
@@ -269,7 +280,11 @@ class BEVFormer(Base3DDetector):
                                             dtype=torch.long),
             level_start_index=query.new_tensor([0], dtype=torch.long)
         )
-
-        print(f'inter_states: {inter_states.shape}')
-        print(f'inter_references: {inter_references.shape}')
         
+        references = [reference_points, *inter_references]
+        decoder_outputs_dict = dict(
+            hidden_states = inter_states,
+            references = references
+        )
+
+        return decoder_outputs_dict

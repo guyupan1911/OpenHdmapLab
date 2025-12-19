@@ -252,7 +252,14 @@ def test_ckpt():
                     new_k = new_k.replace(
                         'ffns.0', 'ffn'
                     )
-
+            elif 'cls_branches' in new_k:
+                new_k = new_k.replace(
+                    'cls_branches', 'bbox_head.cls_branches'
+                )
+            elif 'reg_branches' in new_k:
+                new_k = new_k.replace(
+                    'reg_branches', 'bbox_head.reg_branches'
+                )
             new_state_dict[new_k] = v
 
         return new_state_dict
