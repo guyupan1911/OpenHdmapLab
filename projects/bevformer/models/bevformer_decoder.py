@@ -56,6 +56,8 @@ class BEVFormerDecoder(BaseModule):
                 output,
                 reference_points=reference_points_input,
                 key_padding_mask=key_padding_mask,
+                spatial_shapes=spatial_shapes,
+                level_start_index=level_start_index,
                 **kwargs)
 
             if reg_branches is not None:

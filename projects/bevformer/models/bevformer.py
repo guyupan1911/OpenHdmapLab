@@ -84,6 +84,8 @@ class BEVFormer(Base3DDetector):
                 self.bev_h * self.bev_w, self.embed_dims)
             self.query_embedding = nn.Embedding(
                 self.num_query, self.embed_dims * 2)
+        
+        self.reference_points = nn.Linear(self.embed_dims, 3)
 
     def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
         """
@@ -153,9 +155,11 @@ class BEVFormer(Base3DDetector):
         # only use current frame   
         mlvl_img_feats = self.extract_feat(batch_inputs)
         
-        bev_embedding = self.forward_bev_encoder(mlvl_img_feats, batch_data_samples)
+        bev_embed = self.forward_bev_encoder(mlvl_img_feats, batch_data_samples)
 
-        print(f'bev_embedding: {bev_embedding.shape}')
+        print(f'bev_embed: {bev_embed.shape}')
+
+        self.forward_decoder(bev_embed)
 
         return
         results_list = self.bbox_head.predict(
@@ -175,7 +179,6 @@ class BEVFormer(Base3DDetector):
         results = self.bbox_head.forward(**head_inputs_dict)
         return results
 
-
     def forward_bev_encoder(self, mlvl_feats, batch_data_samples) -> Tensor:
         """
         Args:
@@ -187,12 +190,10 @@ class BEVFormer(Base3DDetector):
         mlvl_feats = [feat[:, -1] for feat in mlvl_feats] # current frame
         bs, num_cams, _, _, _ = mlvl_feats[0].shape
 
-        object_query = self.query_embedding.weight # (num_query, embed_dims)
         bev_query = self.bev_embedding.weight # (bev_h*bev_w, embed_dims)
         bev_mask = bev_query.new_zeros((bs, self.bev_h, self.bev_w)) 
         bev_pos = self.positional_encoding(bev_mask) # (1, embed_dims, bev_h, bev_w)
 
-        print(f'object_query: {object_query.shape}')
         print(f'bev_query: {bev_query.shape}')
         print(f'bev_pos: {bev_pos.shape}')
 
@@ -234,3 +235,41 @@ class BEVFormer(Base3DDetector):
             shift=None,
             batch_data_samples=batch_data_samples)
 
+    def forward_decoder(self, bev_embed) -> Tensor:
+        # bev_embed: (bs, bev_h*bev_w, embed_dims)
+        bs = bev_embed.size(0)
+
+        # object query embeddings: (num_query, embed_dims * 2)
+        object_query_embedding = self.query_embedding.weight
+        query_pos, query = torch.split(
+            object_query_embedding, self.embed_dims, dim=1)
+
+        # expand to batch-first format expected by DeformableDetrTransformerDecoderLayer
+        # query_pos / query: (bs, num_query, embed_dims)
+        query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)
+        query = query.unsqueeze(0).expand(bs, -1, -1)
+
+        # reference points on BEV plane, shape: (bs, num_query, 3)
+        reference_points = self.reference_points(query_pos).sigmoid()
+
+        init_reference_out = reference_points
+
+        # DeformableDetrTransformerDecoderLayer is configured with batch_first=True,
+        # so we keep (bs, num_query, embed_dims) and (bs, bev_h*bev_w, embed_dims)
+        inter_states, inter_references = self.decoder(
+            query=query,
+            key=None,
+            value=bev_embed,
+            query_pos=query_pos,
+            reference_points=reference_points,
+            reg_branches=None,
+            cls_branches=None,
+            # MultiScaleDeformableAttention expects Long (int64) for shapes
+            spatial_shapes=query.new_tensor([[self.bev_h, self.bev_w]],
+                                            dtype=torch.long),
+            level_start_index=query.new_tensor([0], dtype=torch.long)
+        )
+
+        print(f'inter_states: {inter_states.shape}')
+        print(f'inter_references: {inter_references.shape}')
+        
