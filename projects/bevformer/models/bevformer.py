@@ -1,4 +1,5 @@
 from typing import Optional, Union, List, Tuple, Dict
+import copy
 
 import torch
 from torch import Tensor
@@ -161,6 +162,19 @@ class BEVFormer(Base3DDetector):
         """
         
         # TODO: use history bev
+        if batch_data_samples[0].metainfo['scene_token'] != self.prev_frame_info['scene_token']:
+            self.prev_frame_info['prev_bev'] = None
+        
+        self.prev_frame_info['scene_token'] = batch_data_samples[0].metainfo['scene_token']
+
+        if not self.video_test_mode:
+            self.prev_frame_info['prev_bev'] = None
+        
+        # x, y
+        tmp_pos = copy.deepcopy(batch_data_samples[0].metainfo['can_bus'][:3])
+        tmp_angle = copy.deepcopy(batch_data_samples[0].metainfo['can_bus'][-1])
+
+        breakpoint()
 
         # only use current frame   
         mlvl_img_feats = self.extract_feat(batch_inputs)

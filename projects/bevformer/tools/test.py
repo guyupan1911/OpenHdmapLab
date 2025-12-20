@@ -1,6 +1,7 @@
 import argparse
 import os
 import os.path as osp
+import copy
 
 import torch
 import numpy as np
@@ -338,12 +339,13 @@ def test_ckpt():
         for idx, data_batch in enumerate(train_dataloader):
             # print(data_batch.keys())
 
+            inputs = copy.deepcopy(data_batch['inputs'])
+
             detsamples = bevformer.test_step(data_batch)
 
-            inputs = data_batch['inputs']
 
             data_input = {
-                'img': inputs['img'],      # 原来是 [tensor(T, 6, C, H, W)] -> 取第 0 个
+                'img': inputs['img'][0],      # 原来是 [tensor(T, 6, C, H, W)] -> 取第 0 个
                 'points': inputs['points'][0] # 原来是 [[points_t-3,...,points_t]] -> 取第 0 个
             }
             data_sample = detsamples[0]

@@ -4,7 +4,7 @@ from typing import Union, List, Optional, Tuple
 
 import torch
 import numpy as np
-from nuscenes.eval.common.utils import Quaternion
+from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
 
 from mmdet3d.datasets import NuScenesDataset
 from mmhdmap.registry import DATASETS, TRANSFORMS
@@ -20,6 +20,32 @@ class NuScenesTemporalDataset(NuScenesDataset):
         super().__init__(*args, **kwargs)
         self.frames = frames
     
+    def process_canbus(self, data_info):
+        # NOTE:
+        # We only use ego yaw (rotation around z axis).
+        # Roll and pitch are assumed to be small and ignored,
+        # which is consistent with BEVFormer and nuScenes setup.
+        ego2global = np.asarray(data_info['ego2global'], dtype=np.float64)
+        translation = ego2global[:3, 3]
+
+        rot_mat = ego2global[:3, :3]
+
+        # yaw extraction (assume roll/pitch are small, nuScenes ego frame)
+        yaw = np.arctan2(rot_mat[1, 0], rot_mat[0, 0])  # [-pi, pi]
+
+        can_bus = data_info['can_bus'].copy()
+        can_bus[:3] = translation
+
+        # normalize yaw to [0, 2pi)
+        if yaw < 0:
+            yaw += 2 * np.pi
+
+        can_bus[-2] = yaw                  # rad
+        can_bus[-1] = yaw * 180 / np.pi    # deg
+
+        data_info['can_bus'] = can_bus
+        return data_info
+
     def prepare_data(self, index: int) -> Union[dict, None]:
         # 1. Get current frame data_info
         data_info = self.get_data_info(index)
@@ -42,6 +68,9 @@ class NuScenesTemporalDataset(NuScenesDataset):
         # Add Annotation info for current frame
         if not self.test_mode:
             current_input['ann_info'] = data_info['ann_info']
+        
+        current_input = self.process_canbus(current_input)
+
         multi_frame_inputs[0] = current_input
 
         # Historical frames
@@ -64,6 +93,7 @@ class NuScenesTemporalDataset(NuScenesDataset):
             # Share annotation info for pipeline consistency, not used
             # if not self.test_mode:
             #     hist_input['ann_info'] = copy.deepcopy(data_info['ann_info'])
+            hist_input = self.process_canbus(hist_input)
             multi_frame_inputs[frame_idx] = hist_input
         
         result = {
