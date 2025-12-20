@@ -32,9 +32,9 @@ def denormalize_bbox(normalized_bboxes, pc_range):
     rot_cosine = normalized_bboxes[..., 7:8]
     rot = torch.atan2(rot_sine, rot_cosine)
 
-    cx = normalized_bboxes[..., 0:1]
-    cy = normalized_bboxes[..., 1:2]
-    cz = normalized_bboxes[..., 4:5]
+    cx = normalized_bboxes[..., 0:1] * (pc_range[3] - pc_range[0]) + pc_range[0]
+    cy = normalized_bboxes[..., 1:2] * (pc_range[4] - pc_range[1]) + pc_range[1]
+    cz = normalized_bboxes[..., 4:5] * (pc_range[5] - pc_range[2]) + pc_range[2]
 
     L = normalized_bboxes[..., 2:3]
     W = normalized_bboxes[..., 3:4]

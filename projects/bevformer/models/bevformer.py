@@ -30,6 +30,8 @@ class BEVFormer(Base3DDetector):
                  bev_h: int = 30,
                  bev_w: int = 30,
                  num_query: int = 900,
+                 num_cams: int = 6,
+                 use_cams_embeds: bool = True,
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  video_test_mode: bool = False,
@@ -45,6 +47,9 @@ class BEVFormer(Base3DDetector):
         self.num_query = num_query
         self.bev_h = bev_h
         self.bev_w = bev_w
+        self.num_feature_levels = num_feature_levels
+        self.num_cams = num_cams
+        self.use_cams_embeds = use_cams_embeds
 
         bbox_head.update(train_cfg=train_cfg)
         bbox_head.update(test_cfg=test_cfg)
@@ -86,6 +91,11 @@ class BEVFormer(Base3DDetector):
                 self.num_query, self.embed_dims * 2)
         
         self.reference_points = nn.Linear(self.embed_dims, 3)
+
+        self.level_embeds = nn.Parameter(torch.Tensor(
+            self.num_feature_levels, self.embed_dims))
+        self.cams_embeds = nn.Parameter(
+            torch.Tensor(self.num_cams, self.embed_dims))
 
     def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
         """
@@ -216,6 +226,9 @@ class BEVFormer(Base3DDetector):
             spatial_shape = (H, W)
             # -> (num_cams, bs, H*W, C)
             feat = feat.flatten(3).permute(1, 0, 3, 2)
+            if self.use_cams_embeds:
+                feat = feat + self.cams_embeds[:, None, None, :]
+            feat = feat + self.level_embeds[None, None, lvl:lvl+1, :]
             spatial_shapes.append(spatial_shape)
             feat_flatten.append(feat)
         
