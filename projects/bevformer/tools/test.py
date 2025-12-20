@@ -357,12 +357,12 @@ def test_ckpt():
                                             vis_task='multi-modality_det',
                                             draw_gt=False,
                                             draw_pred=True,
-                                            show=True,
-                                            out_file='work_dirs/test_nuscenes_vis.png',
+                                            show=False,
+                                            out_file=f'work_dirs/test_ckpt/test_nuscenes_vis_{idx}.png',
                                             wait_time=-1)
 
 
-            break
+            # break
 
 
 if __name__ == '__main__':

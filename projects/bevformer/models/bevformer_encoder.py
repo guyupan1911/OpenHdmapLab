@@ -138,9 +138,26 @@ class BEVFormerEncoder(BaseModule):
             reference_points_cam[..., 2:3], torch.ones_like(reference_points_cam[..., 2:3]) * eps))
 
         # normalize u (x) / v (y) by image width / height
-        # img_shape is (H, W) or (H, W, C), so index 1 is width and 0 is height
-        reference_points_cam[..., 0] /= batch_data_samples[0].metainfo['img_shape'][1]
-        reference_points_cam[..., 1] /= batch_data_samples[0].metainfo['img_shape'][0]
+        # Prefer batch_input_shape (post-pad) if provided by data_preprocessor.
+        meta0 = batch_data_samples[0].metainfo
+        if 'batch_input_shape' in meta0 and meta0['batch_input_shape'] is not None:
+            h = int(meta0['batch_input_shape'][0])
+            w = int(meta0['batch_input_shape'][1])
+        else:
+            img_shape = meta0.get('img_shape', None)
+            # multi-view: [(H, W, C), ...]
+            if isinstance(img_shape, (list, tuple)) and len(img_shape) > 0 and isinstance(img_shape[0], (list, tuple)):
+                h = int(img_shape[0][0])
+                w = int(img_shape[0][1])
+            # single-view: (H, W) or (H, W, C)
+            elif isinstance(img_shape, (list, tuple)) and len(img_shape) >= 2 and isinstance(img_shape[0], (int, np.integer)):
+                h = int(img_shape[0])
+                w = int(img_shape[1])
+            else:
+                raise TypeError(f'Unsupported img_shape format in metainfo: {type(img_shape)} / {img_shape}')
+
+        reference_points_cam[..., 0] /= w
+        reference_points_cam[..., 1] /= h
 
         bev_mask = (bev_mask & (reference_points_cam[..., 1:2] > 0.0)
                     & (reference_points_cam[..., 1:2] < 1.0)
@@ -205,12 +222,10 @@ class BEVFormerEncoder(BaseModule):
             ref_3d, self.pc_range, batch_data_samples)
         
         shift_ref_2d = ref_2d.clone()
-        # shift_ref_2d += shift[:, None, None, :]
+        if shift is not None:
+            shift_ref_2d += shift[:, None, None, :]
 
-        print(f'ref_3d: {ref_3d.shape}')
-        print(f'ref_2d: {ref_2d.shape}')
-        print(f'reference_points_cam: {reference_points_cam.shape}')
-        print(f'bev_mask: {bev_mask.shape}')
+        # debug prints removed
 
         # -> (bs, num_queries, embed_dims)
         bev_query = bev_query.permute(1, 0, 2)
@@ -230,7 +245,7 @@ class BEVFormerEncoder(BaseModule):
             hybrid_ref_2d = torch.stack([ref_2d, ref_2d], 1).reshape(
                 bs*2, num_queries, num_bev_level, 2)
 
-        print(f'hybrid_ref_2d: {hybrid_ref_2d.shape}')
+        # debug prints removed
 
         for lid, layer in enumerate(self.layers):
             output = layer(

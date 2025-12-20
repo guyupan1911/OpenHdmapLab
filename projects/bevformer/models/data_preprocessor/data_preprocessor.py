@@ -43,6 +43,17 @@ class TemporalDet3DDataPreprocessor(Det3DDataPreprocessor):
             imgs = imgs.view(B, T, num_cams, C, Hp, Wp)
             out['inputs']['imgs'] = imgs
 
+            # Make metainfo shapes consistent with padded tensor (Hp, Wp).
+            # BEVFormer uses img_shape for projection normalization.
+            if 'data_samples' in out and isinstance(out['data_samples'], list):
+                per_view_shape = (int(Hp), int(Wp), 3)
+                for ds in out['data_samples']:
+                    ds.set_metainfo({
+                        'img_shape': [per_view_shape] * num_cams,
+                        'pad_shape': [per_view_shape] * num_cams,
+                        'batch_input_shape': (int(Hp), int(Wp)),
+                    })
+
 
 
         return out

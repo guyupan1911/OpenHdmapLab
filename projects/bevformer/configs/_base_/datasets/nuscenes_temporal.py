@@ -7,9 +7,10 @@ data_root = 'data/nuscenes'
 
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 
+# NOTE: class order must match the original BEVFormer checkpoints.
 class_names = [
-    'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
-    'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
+    'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
+    'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
 metainfo = dict(classes=class_names)
 
@@ -18,22 +19,16 @@ data_prefix = dict(
     pts='samples/LIDAR_TOP',
     sweeps='sweeps/LIDAR_TOP',
     CAM_FRONT='samples/CAM_FRONT',
-    CAM_FRONT_LEFT='samples/CAM_FRONT_LEFT',
     CAM_FRONT_RIGHT='samples/CAM_FRONT_RIGHT',
+    CAM_FRONT_LEFT='samples/CAM_FRONT_LEFT',
     CAM_BACK='samples/CAM_BACK',
-    CAM_BACK_RIGHT='samples/CAM_BACK_RIGHT',
-    CAM_BACK_LEFT='samples/CAM_BACK_LEFT')
+    CAM_BACK_LEFT='samples/CAM_BACK_LEFT',
+    CAM_BACK_RIGHT='samples/CAM_BACK_RIGHT')
 
 backend_args = None
 
-test_transforms = [
-    dict(
-        type='mmdet3d.RandomResize3D',
-        scale=(1600, 900),
-        ratio_range=(1., 1.),
-        keep_ratio=True)
-]
-train_transforms = [dict(type='mmdet3d.PhotoMetricDistortion3D')] + test_transforms
+test_transforms = []
+train_transforms = [dict(type='mmdet3d.PhotoMetricDistortion3D')]
 
 train_pipeline = [
     dict(type=LoadMultiFrameData,

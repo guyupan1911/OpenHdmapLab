@@ -50,6 +50,8 @@ class BEVFormerHead(DETRHead):
         )
 
         self.bbox_coder = TASK_UTILS.build(bbox_coder)
+        # pc_range = [xmin, ymin, zmin, xmax, ymax, zmax]
+        self.pc_range = getattr(self.bbox_coder, 'pc_range', None)
 
     def _init_layers(self):
 
@@ -85,7 +87,8 @@ class BEVFormerHead(DETRHead):
         if self.loss_cls.use_sigmoid:
             bias_init = bias_init_with_prob(0.01)
             for m in self.cls_branches:
-                if hasattr(m, 'bias') and m.bias is not None:
+                # m is a Sequential; initialize bias of the last Linear
+                if hasattr(m[-1], 'bias') and m[-1].bias is not None:
                     nn.init.constant_(m[-1].bias, bias_init)
 
     def forward(self,
@@ -106,6 +109,15 @@ class BEVFormerHead(DETRHead):
             tmp_reg_preds[..., 0:2] = tmp_reg_preds[..., 0:2].sigmoid()
             tmp_reg_preds[..., 4:5] += reference[..., 2:3]
             tmp_reg_preds[..., 4:5] = tmp_reg_preds[..., 4:5].sigmoid()
+
+            # Match original BEVFormer: map normalized cx/cy/cz to real-world coords
+            if self.pc_range is not None:
+                tmp_reg_preds[..., 0:1] = (tmp_reg_preds[..., 0:1] *
+                                           (self.pc_range[3] - self.pc_range[0]) + self.pc_range[0])
+                tmp_reg_preds[..., 1:2] = (tmp_reg_preds[..., 1:2] *
+                                           (self.pc_range[4] - self.pc_range[1]) + self.pc_range[1])
+                tmp_reg_preds[..., 4:5] = (tmp_reg_preds[..., 4:5] *
+                                           (self.pc_range[5] - self.pc_range[2]) + self.pc_range[2])
 
             outputs_coord = tmp_reg_preds
             all_layers_outputs_classes.append(outputs_class)
