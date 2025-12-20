@@ -137,9 +137,10 @@ class BEVFormerEncoder(BaseModule):
         reference_points_cam = (reference_points_cam[..., 0:2] / torch.maximum(
             reference_points_cam[..., 2:3], torch.ones_like(reference_points_cam[..., 2:3]) * eps))
 
-        # normalize u,v
-        reference_points_cam[..., 0] /= batch_data_samples[0].metainfo['img_shape'][0]
-        reference_points_cam[..., 1] /= batch_data_samples[0].metainfo['img_shape'][1]
+        # normalize u (x) / v (y) by image width / height
+        # img_shape is (H, W) or (H, W, C), so index 1 is width and 0 is height
+        reference_points_cam[..., 0] /= batch_data_samples[0].metainfo['img_shape'][1]
+        reference_points_cam[..., 1] /= batch_data_samples[0].metainfo['img_shape'][0]
 
         bev_mask = (bev_mask & (reference_points_cam[..., 1:2] > 0.0)
                     & (reference_points_cam[..., 1:2] < 1.0)
