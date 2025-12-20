@@ -165,18 +165,16 @@ class BEVFormer(Base3DDetector):
         print(f'hidden_states: {hidden_states.shape}')
         print(f'references: {len(references)}')
 
-        results_list = self.bbox_head.predict(
+        results_list_3d = self.bbox_head.predict(
             **decoder_outputs_dict,
             batch_data_samples=batch_data_samples)
 
-        print(f'results_list: {results_list}')
+        print(f'results_list: {results_list_3d}')
 
-        return
-
-        batch_data_samples = self.add_pred_to_datasample(
-            batch_data_samples, results_list)
+        detsamples = self.add_pred_to_datasample(
+            batch_data_samples, data_instances_3d=results_list_3d)
         
-        return batch_data_samples
+        return detsamples
 
     def _forward(self,
                  batch_inputs: Tensor,

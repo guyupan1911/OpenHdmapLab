@@ -105,6 +105,5 @@ model = dict(
             post_center_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
             pc_range=point_cloud_range,
             max_num=300,
-            num_classes=10
-        ))
+            num_classes=10))
 )

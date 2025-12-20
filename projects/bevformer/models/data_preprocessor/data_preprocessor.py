@@ -43,4 +43,6 @@ class TemporalDet3DDataPreprocessor(Det3DDataPreprocessor):
             imgs = imgs.view(B, T, num_cams, C, Hp, Wp)
             out['inputs']['imgs'] = imgs
 
+
+
         return out

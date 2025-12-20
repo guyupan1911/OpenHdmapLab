@@ -187,8 +187,10 @@ def test_nuscenes():
     local_visualizer = MultiFrameDet3DLocalVisualizer()
     local_visualizer.dataset_meta = nuscenes_dataset.metainfo
 
-    data_input = nuscenes_dataset[200]['inputs']
-    data_sample = nuscenes_dataset[200]['data_samples']
+    data_input = nuscenes_dataset[0]['inputs']
+    data_sample = nuscenes_dataset[0]['data_samples']
+
+    breakpoint()
 
     local_visualizer.add_datasample(name='test_nuscenes',
                                     data_input = data_input,
@@ -326,6 +328,8 @@ def test_ckpt():
     nuscenes_dataset = DATASETS.build(cfg.dataset)
     print(f'dataset size: {len(nuscenes_dataset)}')
 
+    local_visualizer = MultiFrameDet3DLocalVisualizer()
+    local_visualizer.dataset_meta = nuscenes_dataset.metainfo
 
     train_dataloader = DataLoader(nuscenes_dataset, batch_size=1, shuffle=False, collate_fn=pseudo_collate)
 
@@ -333,7 +337,29 @@ def test_ckpt():
     with torch.no_grad():
         for idx, data_batch in enumerate(train_dataloader):
             # print(data_batch.keys())
-            results = bevformer.test_step(data_batch)
+
+            detsamples = bevformer.test_step(data_batch)
+
+            inputs = data_batch['inputs']
+
+            data_input = {
+                'img': inputs['img'],      # 原来是 [tensor(T, 6, C, H, W)] -> 取第 0 个
+                'points': inputs['points'][0] # 原来是 [[points_t-3,...,points_t]] -> 取第 0 个
+            }
+            data_sample = detsamples[0]
+
+
+            local_visualizer.add_datasample(name='test_nuscenes',
+                                            data_input = data_input,
+                                            data_sample = data_sample,
+                                            vis_task='multi-modality_det',
+                                            draw_gt=False,
+                                            draw_pred=True,
+                                            show=True,
+                                            out_file='work_dirs/test_nuscenes_vis.png',
+                                            wait_time=-1)
+
+
             break
 
 

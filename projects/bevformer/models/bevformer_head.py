@@ -150,9 +150,12 @@ class BEVFormerHead(DETRHead):
             code_size = bboxes.shape[-1]
 
             results = InstanceData()
-            results.bboxes = batch_metainfos[i]['box_type_3d'](bboxes, code_size)
-            results.scores = preds_dicts[i]['scores']
-            results.labels = preds_dicts[i]['labels']
+            results.bboxes_3d = batch_metainfos[i]['box_type_3d'](bboxes, code_size)
+
+            print(f'box_type_3d: {batch_metainfos[i]["box_type_3d"]}')
+
+            results.scores_3d = preds_dicts[i]['scores']
+            results.labels_3d = preds_dicts[i]['labels']
         
             results_list.append(results)
         

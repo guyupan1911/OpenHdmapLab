@@ -1,3 +1,4 @@
+import copy 
 from typing import Optional, List, Tuple
 
 import torch
@@ -94,7 +95,7 @@ class BEVFormerEncoder(BaseModule):
 
         lidar2img = []
         for data_sample in batch_data_samples:
-            lidar2img.append(data_sample.metainfo['lidar2img'])
+            lidar2img.append(copy.deepcopy(data_sample.metainfo['lidar2img']))
         lidar2img = np.asarray(lidar2img)
         print(f'lidar2img: {lidar2img.shape}')
         lidar2img = reference_points.new_tensor(lidar2img) # (bs, num_cams, 4, 4)

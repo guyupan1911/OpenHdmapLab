@@ -35,6 +35,7 @@ class MultiFrameDet3DLocalVisualizer(Det3DLocalVisualizer):
         # data_samples
         new_data_sample = Det3DDataSample()
         new_data_sample.gt_instances_3d = data_sample.gt_instances_3d
+        new_data_sample.pred_instances_3d = data_sample.pred_instances_3d
         
         # metainfo
         new_metainfo = data_sample.metainfo
