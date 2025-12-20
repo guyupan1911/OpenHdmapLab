@@ -216,8 +216,7 @@ class BEVFormerEncoder(BaseModule):
             device=bev_query.device,
             dtype=bev_query.dtype)
     
-
-        
+       
         reference_points_cam, bev_mask = self.point_sampling(
             ref_3d, self.pc_range, batch_data_samples)
         

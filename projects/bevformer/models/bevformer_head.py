@@ -111,13 +111,12 @@ class BEVFormerHead(DETRHead):
             tmp_reg_preds[..., 4:5] = tmp_reg_preds[..., 4:5].sigmoid()
 
             # Match original BEVFormer: map normalized cx/cy/cz to real-world coords
-            if self.pc_range is not None:
-                tmp_reg_preds[..., 0:1] = (tmp_reg_preds[..., 0:1] *
-                                           (self.pc_range[3] - self.pc_range[0]) + self.pc_range[0])
-                tmp_reg_preds[..., 1:2] = (tmp_reg_preds[..., 1:2] *
-                                           (self.pc_range[4] - self.pc_range[1]) + self.pc_range[1])
-                tmp_reg_preds[..., 4:5] = (tmp_reg_preds[..., 4:5] *
-                                           (self.pc_range[5] - self.pc_range[2]) + self.pc_range[2])
+            tmp_reg_preds[..., 0:1] = (tmp_reg_preds[..., 0:1] *
+                                        (self.pc_range[3] - self.pc_range[0]) + self.pc_range[0])
+            tmp_reg_preds[..., 1:2] = (tmp_reg_preds[..., 1:2] *
+                                        (self.pc_range[4] - self.pc_range[1]) + self.pc_range[1])
+            tmp_reg_preds[..., 4:5] = (tmp_reg_preds[..., 4:5] *
+                                        (self.pc_range[5] - self.pc_range[2]) + self.pc_range[2])
 
             outputs_coord = tmp_reg_preds
             all_layers_outputs_classes.append(outputs_class)

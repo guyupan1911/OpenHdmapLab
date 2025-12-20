@@ -1,4 +1,4 @@
-from typing import Optional, Union, List, Tuple, Dict
+from typing import Optional, Union, List, Tuple, Dict, Sequence
 import copy
 
 import numpy as np
@@ -35,7 +35,7 @@ class BEVFormer(Base3DDetector):
                  num_query: int = 900,
                  num_cams: int = 6,
                  use_cams_embeds: bool = True,
-                 rotate_center=[100, 100],
+                 rotate_center: Optional[Sequence[float]] = None,
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  video_test_mode: bool = False,
@@ -57,7 +57,13 @@ class BEVFormer(Base3DDetector):
         self.num_feature_levels = num_feature_levels
         self.num_cams = num_cams
         self.use_cams_embeds = use_cams_embeds
-        self.rotate_center = rotate_center
+        # torchvision.transforms.functional.rotate expects center=(x, y) in pixel coords.
+        # If not provided, use the BEV feature map center for stability across bev_h/bev_w.
+        if rotate_center is None:
+            self.rotate_center = ((self.bev_w - 1) / 2.0, (self.bev_h - 1) / 2.0)
+        else:
+            assert len(rotate_center) == 2, 'rotate_center must be a 2-tuple/list: (x, y)'
+            self.rotate_center = (float(rotate_center[0]), float(rotate_center[1]))
         self.use_can_bus = use_can_bus
         self.can_bus_norm = can_bus_norm
         self.pc_range = pc_range
@@ -295,6 +301,14 @@ class BEVFormer(Base3DDetector):
                 rotation_angle = batch_data_samples[i].metainfo['can_bus'][-1]
                 tmp_prev_bev = prev_bev[:, i].reshape(
                     self.bev_h, self.bev_w, -1).permute(2, 0, 1)
+                # Guard against a misconfigured rotate_center (must lie within the BEV map).
+                if not (0.0 <= self.rotate_center[0] <= (self.bev_w - 1) and
+                        0.0 <= self.rotate_center[1] <= (self.bev_h - 1)):
+                    raise ValueError(
+                        f'rotate_center={self.rotate_center} is outside the BEV map '
+                        f'(bev_w={self.bev_w}, bev_h={self.bev_h}). '
+                        'Set rotate_center=None to use the BEV center, or pass a valid (x, y).'
+                    )
                 tmp_prev_bev = rotate(tmp_prev_bev, rotation_angle,
                                       center=self.rotate_center)
                 tmp_prev_bev = tmp_prev_bev.permute(1, 2, 0).reshape(
