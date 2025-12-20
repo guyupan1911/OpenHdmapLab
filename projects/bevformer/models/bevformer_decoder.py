@@ -9,6 +9,8 @@ from mmcv.ops import MultiScaleDeformableAttention
 from mmengine.model import BaseModule, ModuleList
 from mmdet.models.layers.transformer import DeformableDetrTransformerDecoderLayer
 from mmdet.utils import ConfigType, OptConfigType
+from mmdet.models.layers.transformer import inverse_sigmoid
+
 
 from mmhdmap.registry import MODELS
 
@@ -54,6 +56,7 @@ class BEVFormerDecoder(BaseModule):
             reference_points_input = reference_points[..., :2].unsqueeze(2)
             output = layer(
                 output,
+                query_pos=query_pos,
                 reference_points=reference_points_input,
                 key_padding_mask=key_padding_mask,
                 spatial_shapes=spatial_shapes,
@@ -72,7 +75,9 @@ class BEVFormerDecoder(BaseModule):
 
                 new_reference_points = new_reference_points.sigmoid()
 
-                reference_points = new_reference_points.detach
+                # detach tensor from graph; note the parentheses – we want the
+                # tensor result of detach(), not the method object itself
+                reference_points = new_reference_points.detach()
 
             if self.return_intermediate:
                 intermediate.append(output)

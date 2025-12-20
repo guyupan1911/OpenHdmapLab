@@ -15,6 +15,7 @@ model = dict(
     bev_h=50,
     bev_w=50,
     num_query=900,
+    with_box_refine=True,
     data_preprocessor=dict(
         type=TemporalDet3DDataPreprocessor,
         bgr_to_rgb=True,

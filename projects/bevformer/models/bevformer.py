@@ -284,7 +284,7 @@ class BEVFormer(Base3DDetector):
             value=bev_embed,
             query_pos=query_pos,
             reference_points=reference_points,
-            reg_branches=None,
+            reg_branches=self.bbox_head.reg_branches if self.with_box_refine else None,
             cls_branches=None,
             # MultiScaleDeformableAttention expects Long (int64) for shapes
             spatial_shapes=query.new_tensor([[self.bev_h, self.bev_w]],

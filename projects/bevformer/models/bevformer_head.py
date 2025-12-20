@@ -25,7 +25,7 @@ class BEVFormerHead(DETRHead):
                  num_pred_layers: int = 6,
                  bev_h: int = 30,
                  bev_w: int = 30,
-                 with_box_refine=False,
+                 with_box_refine=True,
                  as_two_stage=False,
                  bbox_coder=None,
                  train_cfg=None,
@@ -72,8 +72,8 @@ class BEVFormerHead(DETRHead):
             return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
         if self.with_box_refine:
-            self.cls_branches = _get_clone(fc_cls, self.num_pred_layers)
-            self.reg_branches = _get_clone(reg_branch, self.num_pred_layers)
+            self.cls_branches = _get_clones(fc_cls, self.num_pred_layers)
+            self.reg_branches = _get_clones(reg_branch, self.num_pred_layers)
         else:
             self.cls_branches = nn.ModuleList(
                 [fc_cls for _ in range(self.num_pred_layers)])
