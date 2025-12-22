@@ -202,11 +202,15 @@ class BEVFormer(Base3DDetector):
         if self.prev_frame_info['prev_bev'] is not None:
             batch_data_samples[0].metainfo['can_bus'][:3] -= self.prev_frame_info['prev_pos']
             batch_data_samples[0].metainfo['can_bus'][-1] -= self.prev_frame_info['prev_angle']
+            # Normalize delta yaw to avoid 0/360 wrap-around (e.g., 359 -> 1 deg).
+            # Keep it in [-180, 180] degrees, consistent with small inter-frame rotations.
+            delta_yaw = float(batch_data_samples[0].metainfo['can_bus'][-1])
+            delta_yaw = (delta_yaw + 180.0) % 360.0 - 180.0
+            batch_data_samples[0].metainfo['can_bus'][-1] = delta_yaw
         else:
             batch_data_samples[0].metainfo['can_bus'][0:3] = 0
             batch_data_samples[0].metainfo['can_bus'][-1] = 0
         
-
 
         # only use current frame
         mlvl_img_feats = self.extract_feat(batch_inputs)
@@ -223,14 +227,9 @@ class BEVFormer(Base3DDetector):
         hidden_states = decoder_outputs_dict['hidden_states']
         references = decoder_outputs_dict['references']
 
-        print(f'hidden_states: {hidden_states.shape}')
-        print(f'references: {len(references)}')
-
         results_list_3d = self.bbox_head.predict(
             **decoder_outputs_dict,
             batch_data_samples=batch_data_samples)
-
-        print(f'results_list: {results_list_3d}')
 
         detsamples = self.add_pred_to_datasample(
             batch_data_samples, data_instances_3d=results_list_3d)
@@ -256,6 +255,7 @@ class BEVFormer(Base3DDetector):
         """
 
         mlvl_feats = [feat[:, -1] for feat in mlvl_feats] # current frame
+
         bs, num_cams, _, _, _ = mlvl_feats[0].shape
     
         bev_query = self.bev_embedding.weight # (bev_h*bev_w, embed_dims)
@@ -352,10 +352,11 @@ class BEVFormer(Base3DDetector):
             bev_w=self.bev_w,
             spatial_shapes=spatial_shapes,
             level_start_index=level_start_index,
-            prev_bev=prev_bev,
+            prev_bev=None,
             shift=shift,
             batch_data_samples=batch_data_samples)
         
+
         return {
             "bev_embed": bev_embed
         }
@@ -394,6 +395,7 @@ class BEVFormer(Base3DDetector):
             level_start_index=query.new_tensor([0], dtype=torch.long)
         )
         
+
         references = [reference_points, *inter_references]
         decoder_outputs_dict = dict(
             hidden_states = inter_states,

@@ -21,27 +21,41 @@ class NuScenesTemporalDataset(NuScenesDataset):
         self.frames = frames
     
     def process_canbus(self, data_info):
-        # NOTE:
-        # We only use ego yaw (rotation around z axis).
-        # Roll and pitch are assumed to be small and ignored,
-        # which is consistent with BEVFormer and nuScenes setup.
-        ego2global = np.asarray(data_info['ego2global'], dtype=np.float64)
-        translation = ego2global[:3, 3]
+        """Populate can_bus fields to match original BEVFormer conventions.
 
-        rot_mat = ego2global[:3, :3]
-
-        # yaw extraction (assume roll/pitch are small, nuScenes ego frame)
-        yaw = np.arctan2(rot_mat[1, 0], rot_mat[0, 0])  # [-pi, pi]
+        Original BEVFormer (mmdet3d plugin) sets:
+        - can_bus[:3]    = ego2global translation (x, y, z)
+        - can_bus[3:7]   = ego2global rotation quaternion (w, x, y, z)
+        - can_bus[-2]    = ego yaw in radians (wrapped to [0, 2pi))
+        - can_bus[-1]    = ego yaw in degrees (wrapped to [0, 360))
+        """
+        # Prefer quaternion+translation fields if they exist (more stable than
+        # reconstructing from a float matrix that may not be perfectly orthogonal).
+        if 'ego2global_rotation' in data_info and 'ego2global_translation' in data_info:
+            rotation = Quaternion(data_info['ego2global_rotation'])
+            translation = np.asarray(data_info['ego2global_translation'], dtype=np.float64)
+        else:
+            ego2global = np.asarray(data_info['ego2global'], dtype=np.float64)
+            translation = ego2global[:3, 3]
+            rot_mat = ego2global[:3, :3]
+            # Orthonormalize rot_mat to avoid pyquaternion's strict orthogonality check.
+            # Use SVD-based projection onto SO(3).
+            U, _, Vt = np.linalg.svd(rot_mat)
+            rot_mat = U @ Vt
+            if np.linalg.det(rot_mat) < 0:
+                U[:, -1] *= -1
+                rot_mat = U @ Vt
+            rotation = Quaternion(matrix=rot_mat)
+        patch_angle = quaternion_yaw(rotation) / np.pi * 180.0
+        if patch_angle < 0:
+            patch_angle += 360.0
 
         can_bus = data_info['can_bus'].copy()
         can_bus[:3] = translation
-
-        # normalize yaw to [0, 2pi)
-        if yaw < 0:
-            yaw += 2 * np.pi
-
-        can_bus[-2] = yaw                  # rad
-        can_bus[-1] = yaw * 180 / np.pi    # deg
+        # Store quaternion as (w, x, y, z) to match original BEVFormer.
+        can_bus[3:7] = rotation.elements
+        can_bus[-2] = patch_angle / 180.0 * np.pi  # rad in [0, 2pi)
+        can_bus[-1] = patch_angle                  # deg in [0, 360)
 
         data_info['can_bus'] = can_bus
         return data_info

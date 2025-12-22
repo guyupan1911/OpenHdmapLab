@@ -1,6 +1,7 @@
 from typing import Optional
 
 import numpy as np
+import torch
 from mmengine.dist import master_only
 from mmdet3d.visualization import Det3DLocalVisualizer
 from mmdet3d.structures import Det3DDataSample
@@ -35,7 +36,24 @@ class MultiFrameDet3DLocalVisualizer(Det3DLocalVisualizer):
         # data_samples
         new_data_sample = Det3DDataSample()
         new_data_sample.gt_instances_3d = data_sample.gt_instances_3d
-        new_data_sample.pred_instances_3d = data_sample.pred_instances_3d
+        
+        # Fix yaw angle for prediction instances: convert from nuscenes format to mmdet3d format
+        # In nuscenes, yaw is defined differently than in mmdet3d visualization
+        # Need to negate yaw angles for correct visualization in mmdet3d
+        if data_sample.pred_instances_3d is not None and hasattr(data_sample.pred_instances_3d, 'bboxes_3d'):
+            pred_instances_3d = data_sample.pred_instances_3d.clone()
+            if pred_instances_3d.bboxes_3d is not None and len(pred_instances_3d.bboxes_3d) > 0:
+                # Get the tensor representation of bboxes
+                bboxes_tensor = pred_instances_3d.bboxes_3d.tensor.clone()
+                # Negate yaw angles (yaw is at index 6 in [x, y, z, w, l, h, yaw, vx, vy])
+                if bboxes_tensor.shape[-1] >= 7:
+                    bboxes_tensor[:, 6] = -bboxes_tensor[:, 6]
+                    # Create new bboxes_3d with corrected yaw using the same type as original
+                    bbox_type = type(pred_instances_3d.bboxes_3d)
+                    pred_instances_3d.bboxes_3d = bbox_type(bboxes_tensor, box_dim=bboxes_tensor.shape[-1])
+            new_data_sample.pred_instances_3d = pred_instances_3d
+        else:
+            new_data_sample.pred_instances_3d = data_sample.pred_instances_3d
         
         # metainfo
         new_metainfo = data_sample.metainfo

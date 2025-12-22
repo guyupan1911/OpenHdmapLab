@@ -1,6 +1,8 @@
 import torch
 
 from torch.autograd.function import Function, once_differentiable
+from torch.cuda.amp import custom_bwd, custom_fwd
+
 from mmcv.utils import ext_loader
 
 ext_module = ext_loader.load_ext(
@@ -10,6 +12,7 @@ ext_module = ext_loader.load_ext(
 class MultiScaleDeformableAttnFunction(Function):
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, value: torch.Tensor, value_spatial_shapes: torch.Tensor,
                 value_level_start_index: torch.Tensor,
                 sampling_locations: torch.Tensor,

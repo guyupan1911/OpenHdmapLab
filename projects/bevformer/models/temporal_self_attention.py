@@ -111,7 +111,11 @@ class TemporalSelfAttention(BaseModule):
                 spatial_shapes: Optional[torch.Tensor] = None,
                 level_start_index: Optional[torch.Tensor] = None,
                 **kwargs) -> torch.Tensor:
-                
+        if value is None:
+            # without history bev feature, use query twice
+            bs, num_queries, embed_dims = query.shape
+            value = torch.stack([query, query], 1).reshape(bs * 2, num_queries, embed_dims)
+
         if identity is None:
             identity = query
         if query_pos is not None:
@@ -121,10 +125,6 @@ class TemporalSelfAttention(BaseModule):
             if value is not None:
                 value = value.permute(1, 0, 2)
 
-        if value is None:
-            # without history bev feature, use query twice
-            bs, num_queries, embed_dims = query.shape
-            value = torch.stack([query, query], 1).reshape(bs * 2, num_queries, embed_dims)
         
         bs, num_query, _ = query.shape
         _, num_value, _ = value.shape

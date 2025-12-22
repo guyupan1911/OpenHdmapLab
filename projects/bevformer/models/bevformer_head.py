@@ -98,6 +98,7 @@ class BEVFormerHead(DETRHead):
         all_layers_outputs_classes = []
         all_layers_outputs_coords = []
 
+
         for layer_id in range(hidden_states.shape[0]):
             reference = inverse_sigmoid(references[layer_id])
             hidden_state = hidden_states[layer_id]
@@ -129,6 +130,8 @@ class BEVFormerHead(DETRHead):
             all_cls_scores = all_layers_outputs_classes,
             all_bbox_preds = all_layers_outputs_coords
         )
+
+
         return preds_dicts
 
 

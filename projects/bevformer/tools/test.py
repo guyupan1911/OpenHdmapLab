@@ -337,6 +337,8 @@ def test_ckpt():
     bevformer.eval()
     with torch.no_grad():
         for idx, data_batch in enumerate(train_dataloader):
+            if idx != 50:
+                continue
             # print(data_batch.keys())
 
             inputs = copy.deepcopy(data_batch['inputs'])
@@ -355,9 +357,9 @@ def test_ckpt():
                                             data_input = data_input,
                                             data_sample = data_sample,
                                             vis_task='multi-modality_det',
-                                            draw_gt=False,
+                                            draw_gt=True,
                                             draw_pred=True,
-                                            show=False,
+                                            show=True,
                                             out_file=f'work_dirs/test_ckpt/test_nuscenes_vis_{idx}.png',
                                             wait_time=-1)
 

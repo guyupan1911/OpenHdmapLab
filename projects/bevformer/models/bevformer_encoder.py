@@ -7,6 +7,7 @@ import numpy as np
 
 from mmengine.model import BaseModule, ModuleList
 from mmengine.config import ConfigDict
+
 from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.transformer import FFN
 
@@ -83,7 +84,6 @@ class BEVFormerEncoder(BaseModule):
             ref_3d = ref_3d[None].repeat(bs, 1, 1, 1)
             return ref_3d # (bs, num_points_in_pillar, sum(HW), 3)
 
-    # @force_fp32(apply_to=('reference_points', 'img_metas'))
     def point_sampling(self, reference_points, pc_range, batch_data_samples):
         """
         Args:
@@ -92,7 +92,7 @@ class BEVFormerEncoder(BaseModule):
             pc_range: lidar range
             batch_data_samples: metainfo
         """
-
+        # with torch.cuda.amp.autocast(enabled=False):
         lidar2img = []
         for data_sample in batch_data_samples:
             lidar2img.append(copy.deepcopy(data_sample.metainfo['lidar2img']))
@@ -103,11 +103,11 @@ class BEVFormerEncoder(BaseModule):
 
         # convert to real-world coordinate
         reference_points[..., 0:1] = (reference_points[..., 0:1] *
-                                      (pc_range[3] - pc_range[0]) + pc_range[0])
+                                    (pc_range[3] - pc_range[0]) + pc_range[0])
         reference_points[..., 1:2] = (reference_points[..., 1:2] * 
-                                      (pc_range[4] - pc_range[1]) + pc_range[1])
+                                    (pc_range[4] - pc_range[1]) + pc_range[1])
         reference_points[..., 2:3] = (reference_points[..., 2:3] *
-                                      (pc_range[5] - pc_range[2]) + pc_range[2])
+                                    (pc_range[5] - pc_range[2]) + pc_range[2])
 
         # -> (bs, num_points_in_pillar, sum(hw), 4)
         reference_points = torch.cat(
@@ -246,6 +246,9 @@ class BEVFormerEncoder(BaseModule):
 
         # debug prints removed
 
+
+
+
         for lid, layer in enumerate(self.layers):
             output = layer(
                 query=bev_query,
@@ -270,6 +273,7 @@ class BEVFormerEncoder(BaseModule):
         if self.return_intermediate:
             return torch.stack(intermediate)
         
+
         return output
 
 
@@ -353,6 +357,7 @@ class BEVFormerEncoderLayer(BaseModule):
                 has shape (num_cams, bs, bev_h*bev_w, num_Z_anchors)
         """
 
+
         query = self.temporal_attn(
             query=query,
             key=prev_bev,
@@ -365,6 +370,8 @@ class BEVFormerEncoderLayer(BaseModule):
             level_start_index=torch.tensor([0], device=query.device),
             **kwargs,
         )
+
+
         query = self.norms[0](query)
         query = self.spatial_cross_attn(
             query=query,

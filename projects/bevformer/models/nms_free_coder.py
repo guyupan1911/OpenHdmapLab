@@ -31,6 +31,7 @@ class NMSFreeCoder(BaseBBoxCoder):
         all_cls_scores = preds_dicts['all_cls_scores'][-1]
         all_bbox_preds = preds_dicts['all_bbox_preds'][-1]
 
+
         batch_size = all_cls_scores.size()[0]
         predictions_list = []
         for i in range(batch_size):
@@ -66,6 +67,9 @@ class NMSFreeCoder(BaseBBoxCoder):
             boxes3d = final_box_preds[mask]
             scores = final_scores[mask]
             labels = final_preds[mask]
+
+            breakpoint()
+
             predictions_dict = {
                 'bboxes': boxes3d,
                 'scores': scores,
