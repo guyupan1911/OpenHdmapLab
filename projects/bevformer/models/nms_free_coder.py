@@ -68,8 +68,6 @@ class NMSFreeCoder(BaseBBoxCoder):
             scores = final_scores[mask]
             labels = final_preds[mask]
 
-            breakpoint()
-
             predictions_dict = {
                 'bboxes': boxes3d,
                 'scores': scores,

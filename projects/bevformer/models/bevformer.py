@@ -16,14 +16,12 @@ from torchvision.transforms.functional import rotate
 from mmhdmap.registry import MODELS
 
 
-@MODELS.register_module()
 class BEVFormer(Base3DDetector):
 
     def __init__(self,
                  img_backbone: ConfigType,
                  img_neck: OptConfigType = None,
                  bev_encoder: OptConfigType = None,
-                 decoder: OptConfigType = None,
                  bbox_head: OptConfigType = None,
                  positional_encoding: OptConfigType = None,
                  with_box_refine: bool = False,
@@ -32,7 +30,6 @@ class BEVFormer(Base3DDetector):
                  num_feature_levels: int = 4,
                  bev_h: int = 30,
                  bev_w: int = 30,
-                 num_query: int = 900,
                  num_cams: int = 6,
                  use_cams_embeds: bool = True,
                  rotate_center: Optional[Sequence[float]] = None,
@@ -51,7 +48,6 @@ class BEVFormer(Base3DDetector):
             init_cfg = init_cfg)
         
         self.embed_dims = embed_dims
-        self.num_query = num_query
         self.bev_h = bev_h
         self.bev_w = bev_w
         self.num_feature_levels = num_feature_levels
@@ -73,7 +69,6 @@ class BEVFormer(Base3DDetector):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.bev_encoder = bev_encoder
-        self.decoder = decoder
         self.with_box_refine = with_box_refine
         self.as_two_stage = as_two_stage
 
@@ -99,16 +94,12 @@ class BEVFormer(Base3DDetector):
     def _init_layers(self) -> None:
 
         self.bev_encoder = MODELS.build(self.bev_encoder)
-        self.decoder = MODELS.build(self.decoder)
 
         if not self.as_two_stage:
             self.bev_embedding = nn.Embedding(
                 self.bev_h * self.bev_w, self.embed_dims)
-            self.query_embedding = nn.Embedding(
-                self.num_query, self.embed_dims * 2)
+            
         
-        self.reference_points = nn.Linear(self.embed_dims, 3)
-
         self.level_embeds = nn.Parameter(torch.Tensor(
             self.num_feature_levels, self.embed_dims))
         self.cams_embeds = nn.Parameter(
@@ -222,14 +213,9 @@ class BEVFormer(Base3DDetector):
         self.prev_frame_info['prev_angle'] = tmp_angle
         self.prev_frame_info['prev_bev'] = bev_encoder_outputs['bev_embed']
 
-        decoder_outputs_dict = self.forward_decoder(bev_encoder_outputs['bev_embed'])
+        bev_embed = bev_encoder_outputs['bev_embed']
 
-        hidden_states = decoder_outputs_dict['hidden_states']
-        references = decoder_outputs_dict['references']
-
-        results_list_3d = self.bbox_head.predict(
-            **decoder_outputs_dict,
-            batch_data_samples=batch_data_samples)
+        results_list_3d = self.bbox_head.predict(bev_embed, batch_data_samples=batch_data_samples)
 
         detsamples = self.add_pred_to_datasample(
             batch_data_samples, data_instances_3d=results_list_3d)
@@ -360,46 +346,3 @@ class BEVFormer(Base3DDetector):
         return {
             "bev_embed": bev_embed
         }
-
-    def forward_decoder(self, bev_embed) -> Tensor:
-        # bev_embed: (bs, bev_h*bev_w, embed_dims)
-        bs = bev_embed.size(0)
-
-        # object query embeddings: (num_query, embed_dims * 2)
-        object_query_embedding = self.query_embedding.weight
-        query_pos, query = torch.split(
-            object_query_embedding, self.embed_dims, dim=1)
-
-        # expand to batch-first format expected by DeformableDetrTransformerDecoderLayer
-        # query_pos / query: (bs, num_query, embed_dims)
-        query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)
-        query = query.unsqueeze(0).expand(bs, -1, -1)
-
-        # reference points on BEV plane, shape: (bs, num_query, 3)
-        reference_points = self.reference_points(query_pos).sigmoid()
-
-        init_reference_out = reference_points
-
-       
-        inter_states, inter_references = self.decoder(
-            query=query,
-            key=None,
-            value=bev_embed,
-            query_pos=query_pos,
-            reference_points=reference_points,
-            reg_branches=self.bbox_head.reg_branches if self.with_box_refine else None,
-            cls_branches=None,
-            # MultiScaleDeformableAttention expects Long (int64) for shapes
-            spatial_shapes=query.new_tensor([[self.bev_h, self.bev_w]],
-                                            dtype=torch.long),
-            level_start_index=query.new_tensor([0], dtype=torch.long)
-        )
-        
-
-        references = [reference_points, *inter_references]
-        decoder_outputs_dict = dict(
-            hidden_states = inter_states,
-            references = references
-        )
-
-        return decoder_outputs_dict

@@ -14,6 +14,7 @@ from mmengine.model import bias_init_with_prob
 from mmhdmap.registry import MODELS, TASK_UTILS
 
 
+@MODELS.register_module()
 class BEVFormerHead(DETRHead):
 
     def __init__(self,
@@ -229,6 +230,8 @@ class BEVFormerHead(DETRHead):
 
             results = InstanceData()
             results.bboxes_3d = batch_metainfos[i]['box_type_3d'](bboxes, code_size)
+
+            print(f'box_type_3d: {batch_metainfos[i]["box_type_3d"]}')
 
             results.scores_3d = preds_dicts[i]['scores']
             results.labels_3d = preds_dicts[i]['labels']

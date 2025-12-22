@@ -212,118 +212,152 @@ def test_ckpt():
 
     # remap ckpt
     def remap_attention_keys(state_dict):
+        """
+        Remap checkpoint keys from old BEVFormer structure to new structure.
+        
+        Old structure: pts_bbox_head.transformer.{encoder, decoder, ...}
+        New structure: {bev_encoder, bbox_head.decoder, ...}
+        
+        Mapping rules:
+        1. Remove 'pts_bbox_head.' prefix
+        2. Map transformer.encoder.* → bev_encoder.*
+           - encoder.layers.*.attentions.0.* → layers.*.temporal_attn.*
+           - encoder.layers.*.attentions.1.* → layers.*.spatial_cross_attn.*
+           - encoder.layers.*.ffns.0.* → layers.*.ffn.*
+        3. Map transformer.decoder.* → bbox_head.decoder.*
+           - decoder.layers.*.attentions.0.attn.* → decoder.layers.*.self_attn.attn.*
+           - decoder.layers.*.attentions.1.* → decoder.layers.*.cross_attn.*
+           - decoder.layers.*.ffns.0.* → decoder.layers.*.ffn.*
+        4. Map transformer components to bev_encoder:
+           - transformer.level_embeds → bev_encoder.level_embeds
+           - transformer.cams_embeds → bev_encoder.cams_embeds
+           - transformer.can_bus_mlp.* → bev_encoder.can_bus_mlp.*
+        5. Map transformer.reference_points.* → bbox_head.reference_points.*
+        6. Map positional_encoding.* → bev_encoder.positional_encoding.*
+        7. Map bev_embedding.* → bev_encoder.bev_embedding.*
+        8. Map other bbox_head components
+        """
         new_state_dict = {}
+        
         for k, v in state_dict.items():
             new_k = k
-
-            if 'pts_bbox_head' in new_k:
-                new_k = new_k.replace('pts_bbox_head.', '')
-
-            if 'transformer' in new_k:
-                new_k = new_k.replace('transformer.', '')
-
-            if 'encoder.layers' in new_k:
-                if 'encoder' in new_k:
-                    new_k = new_k.replace(
-                        'encoder', 'bev_encoder'
-                    )
-
-                if 'attentions.0' in new_k:
-                    # attentions.0 → temporal_self_attn
-                    new_k = new_k.replace(
-                        "attentions.0.", "temporal_attn."
-                    )
-                elif 'attentions.1' in new_k:
-                    # attentions.1 → spatial_cross_attn
-                    new_k = new_k.replace(
-                        "attentions.1.", "spatial_cross_attn."
-                    )
-                elif 'ffns.0' in new_k:
-                    new_k = new_k.replace(
-                        'ffns.0', 'ffn'
-                    )
-            elif 'decoder.layers' in new_k:
-                if 'attentions.0' in new_k:
-                    new_k = new_k.replace(
-                        'attentions.0', 'self_attn'
-                    )
-                elif 'attentions.1' in new_k:
-                    new_k = new_k.replace(
-                        'attentions.1', 'cross_attn'
-                    )
-                elif 'ffns.0' in new_k:
-                    new_k = new_k.replace(
-                        'ffns.0', 'ffn'
-                    )
+            
+            # Step 1: Remove 'pts_bbox_head.' prefix
+            if new_k.startswith('pts_bbox_head.'):
+                new_k = new_k[len('pts_bbox_head.'):]
+            
+            # Step 2: Handle transformer.encoder → bev_encoder
+            if new_k.startswith('transformer.encoder.'):
+                # Remove 'transformer.' prefix and replace 'encoder' with 'bev_encoder'
+                new_k = new_k.replace('transformer.encoder.', 'bev_encoder.', 1)
+                
+                # Map attention and ffn layers within encoder layers
+                if '.layers.' in new_k:
+                    # Map attentions.0 → temporal_attn
+                    if '.attentions.0.' in new_k:
+                        new_k = new_k.replace('.attentions.0.', '.temporal_attn.', 1)
+                    elif new_k.endswith('.attentions.0'):
+                        new_k = new_k[:-len('.attentions.0')] + '.temporal_attn'
+                    # Map attentions.1 → spatial_cross_attn (including deformable_attention)
+                    elif '.attentions.1.' in new_k:
+                        new_k = new_k.replace('.attentions.1.', '.spatial_cross_attn.', 1)
+                    elif new_k.endswith('.attentions.1'):
+                        new_k = new_k[:-len('.attentions.1')] + '.spatial_cross_attn'
+                    # Map ffns.0 → ffn
+                    elif '.ffns.0.' in new_k:
+                        new_k = new_k.replace('.ffns.0.', '.ffn.', 1)
+                    elif new_k.endswith('.ffns.0'):
+                        new_k = new_k[:-len('.ffns.0')] + '.ffn'
+            
+            # Step 3: Handle transformer.decoder → bbox_head.decoder
+            elif new_k.startswith('transformer.decoder.'):
+                # Remove 'transformer.' prefix and add 'bbox_head.' prefix
+                new_k = new_k.replace('transformer.decoder.', 'bbox_head.decoder.', 1)
+                
+                # Map attention and ffn layers within decoder.layers
+                if 'decoder.layers.' in new_k:
+                    # Map attentions.0.attn.* → self_attn.attn.*
+                    if '.attentions.0.attn.' in new_k:
+                        new_k = new_k.replace('.attentions.0.attn.', '.self_attn.attn.', 1)
+                    elif new_k.endswith('.attentions.0.attn'):
+                        new_k = new_k[:-len('.attentions.0.attn')] + '.self_attn.attn'
+                    # Map attentions.0.* (other keys) → self_attn.*
+                    elif '.attentions.0.' in new_k:
+                        new_k = new_k.replace('.attentions.0.', '.self_attn.', 1)
+                    elif new_k.endswith('.attentions.0'):
+                        new_k = new_k[:-len('.attentions.0')] + '.self_attn'
+                    # Map attentions.1 → cross_attn
+                    elif '.attentions.1.' in new_k:
+                        new_k = new_k.replace('.attentions.1.', '.cross_attn.', 1)
+                    elif new_k.endswith('.attentions.1'):
+                        new_k = new_k[:-len('.attentions.1')] + '.cross_attn'
+                    # Map ffns.0 → ffn
+                    elif '.ffns.0.' in new_k:
+                        new_k = new_k.replace('.ffns.0.', '.ffn.', 1)
+                    elif new_k.endswith('.ffns.0'):
+                        new_k = new_k[:-len('.ffns.0')] + '.ffn'
+            
+            # Step 4: Handle transformer components → bev_encoder
+            elif new_k.startswith('transformer.level_embeds'):
+                new_k = new_k.replace('transformer.level_embeds', 'bev_encoder.level_embeds', 1)
+            elif new_k.startswith('transformer.cams_embeds'):
+                new_k = new_k.replace('transformer.cams_embeds', 'bev_encoder.cams_embeds', 1)
+            elif new_k.startswith('transformer.can_bus_mlp.'):
+                new_k = new_k.replace('transformer.can_bus_mlp.', 'bev_encoder.can_bus_mlp.', 1)
+            
+            # Step 5: Handle transformer.reference_points → bbox_head.reference_points
+            elif new_k.startswith('transformer.reference_points.'):
+                new_k = new_k.replace('transformer.reference_points.', 'bbox_head.reference_points.', 1)
+            elif new_k == 'transformer.reference_points':
+                new_k = 'bbox_head.reference_points'
+            
+            # Step 6: Handle positional_encoding → bev_encoder.positional_encoding
+            elif new_k.startswith('positional_encoding.'):
+                new_k = 'bev_encoder.' + new_k
+            elif new_k == 'positional_encoding':
+                new_k = 'bev_encoder.positional_encoding'
+            
+            # Step 7: Handle bev_embedding → bev_encoder.bev_embedding
+            elif new_k.startswith('bev_embedding.'):
+                new_k = 'bev_encoder.' + new_k
+            elif new_k == 'bev_embedding':
+                new_k = 'bev_encoder.bev_embedding'
+            
+            # Step 8: Handle other bbox_head components
             elif 'cls_branches' in new_k:
-                new_k = new_k.replace(
-                    'cls_branches', 'bbox_head.cls_branches'
-                )
+                if not new_k.startswith('bbox_head.'):
+                    new_k = 'bbox_head.' + new_k
+            
             elif 'reg_branches' in new_k:
-                new_k = new_k.replace(
-                    'reg_branches', 'bbox_head.reg_branches'
-                )
+                if not new_k.startswith('bbox_head.'):
+                    new_k = 'bbox_head.' + new_k
+            
+            elif 'code_weights' in new_k:
+                if not new_k.startswith('bbox_head.'):
+                    new_k = 'bbox_head.' + new_k
+            
+            elif 'query_embedding' in new_k:
+                if not new_k.startswith('bbox_head.'):
+                    new_k = 'bbox_head.' + new_k
+            
+            # Keep img_backbone and img_neck as is (they don't need remapping)
+            # All other keys that don't match above patterns are kept as is
+          
             new_state_dict[new_k] = v
-
+        
         return new_state_dict
 
     ckpt = remap_attention_keys(ckpt)
 
-    # # img_backbone
-    # img_backbone = MODELS.build(cfg.model.img_backbone)
-    # backbone_ckpt = {k.replace('img_backbone.', ''): v for k, v in ckpt.items() if 'img_backbone' in k}
-    # missing, unexpected = img_backbone.load_state_dict(backbone_ckpt, strict=False)
-    # if len(missing) > 0 or len(unexpected) > 0:
-    #     print('[bold red]Some keys did not match for the img_backbone[/bold red]')
-    #     print(f'missing keys: {missing}')
-    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    # else:
-    #     print('[bold green]All keys matched successfully for the img_backbone[/bold green]')
-
-    # # img_neck
-    # img_neck = MODELS.build(cfg.model.img_neck)
-    # neck_ckpt = {k.replace('img_neck.', ''): v for k, v in ckpt.items() if 'img_neck' in k}
-    # missing, unexpected = img_neck.load_state_dict(neck_ckpt, strict=False)
-    # if len(missing) > 0 or len(unexpected) > 0:
-    #     print('[bold red]Some keys did not match for the img_neck[/bold red]')
-    #     print(f'missing keys: {missing}')
-    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    # else:   
-    #     print('[bold green]All keys matched successfully for the img_neck[/bold green]')
-
-
-    # bevformer_encoder = MODELS.build(cfg.model.encoder)
-    # bevformer_encoder_ckpt={k.replace('pts_bbox_head.transformer.encoder.', ''): v
-    #                                 for k, v in ckpt.items()
-    #                                 if 'pts_bbox_head.transformer.encoder' in k}
-    # missing, unexpected = bevformer_encoder.load_state_dict(bevformer_encoder_ckpt, strict=False)
-    # if len(missing) > 0 or len(unexpected) > 0:
-    #     print('[bold red]Some keys did not match for the bevformer_encoder[/bold red]')
-    #     print(f'missing keys: {missing}')
-    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    # else:   
-    #     print('[bold green]All keys matched successfully for the bevformer_encoder[/bold green]')
-
-    # bevformer_decoder = MODELS.build(cfg.model.decoder)
-    # bevformer_decoder_ckpt={k.replace('pts_bbox_head.transformer.decoder.', ''): v
-    #                                 for k, v in ckpt.items()
-    #                                 if 'pts_bbox_head.transformer.decoder' in k}
-    # missing, unexpected = bevformer_decoder.load_state_dict(bevformer_decoder_ckpt, strict=False)
-    # if len(missing) > 0 or len(unexpected) > 0:
-    #     print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
-    #     print(f'missing keys: {missing}')
-    #     print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
-    # else:   
-    #     print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
-
     bevformer = MODELS.build(cfg.model)
+
     missing, unexpected = bevformer.load_state_dict(ckpt, strict=False)
     if len(missing) > 0 or len(unexpected) > 0:
-        print('[bold red]Some keys did not match for the bevformer_decoder[/bold red]')
+        print('[bold red]Some keys did not match for the bevformer[/bold red]')
         print(f'missing keys: {missing}')
         print(f'[bold green]unexpected keys: {unexpected}[/bold green]')
     else:   
-        print('[bold green]All keys matched successfully for the bevformer_decoder[/bold green]')
+        print('[bold green]All keys matched successfully for the bevformer[/bold green]')
     bevformer.cuda()
 
     nuscenes_dataset = DATASETS.build(cfg.dataset)
@@ -337,10 +371,6 @@ def test_ckpt():
     bevformer.eval()
     with torch.no_grad():
         for idx, data_batch in enumerate(train_dataloader):
-            if idx != 50:
-                continue
-            # print(data_batch.keys())
-
             inputs = copy.deepcopy(data_batch['inputs'])
 
             detsamples = bevformer.test_step(data_batch)
@@ -357,14 +387,14 @@ def test_ckpt():
                                             data_input = data_input,
                                             data_sample = data_sample,
                                             vis_task='multi-modality_det',
-                                            draw_gt=True,
+                                            draw_gt=False,
                                             draw_pred=True,
                                             show=True,
                                             out_file=f'work_dirs/test_ckpt/test_nuscenes_vis_{idx}.png',
                                             wait_time=-1)
 
 
-            # break
+            break
 
 
 if __name__ == '__main__':

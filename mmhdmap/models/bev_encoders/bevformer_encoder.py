@@ -1,8 +1,9 @@
 import copy 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Sequence
 
 import torch
 from torch import Tensor
+from torch import nn
 import numpy as np
 
 from mmengine.model import BaseModule, ModuleList
@@ -10,34 +11,60 @@ from mmengine.config import ConfigDict
 
 from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.transformer import FFN
+from mmdet.utils import OptConfigType, ConfigType, OptMultiConfig
 
 from mmhdmap.registry import MODELS
 
-from .temporal_self_attention import TemporalSelfAttention
-from .spatial_cross_attention import SpatialCrossAttention
 
 
-# @MODELS.register_module()
+@MODELS.register_module()
 class BEVFormerEncoder(BaseModule):
 
     def __init__(self, 
                  pc_range: Tuple[int],
+                 num_feature_levels: int = 4,
                  num_points_in_pillar: int = 4,
                  return_intermediate: bool = False,
                  num_layers: int = 6,
                  num_cp: int = -1,
+                 num_cams: int = 6,
+                 use_cams_embeds: bool = True,
+                 use_can_bus=True,
+                 can_bus_norm=True,
+                 bev_h: int = 50,
+                 bev_w: int = 50,
+                 positional_encoding: OptMultiConfig = None,
+                 rotate_center: Optional[Sequence[float]] = None,
                  layer_cfg: Optional[ConfigDict] = None,
                  init_cfg: Optional[ConfigDict] = None) -> None:
 
         super().__init__(init_cfg=init_cfg)
         self.fp16_enabled = False
         self.pc_range = pc_range
+        self.num_feature_levels = num_feature_levels
         self.num_points_in_pillar = num_points_in_pillar
         self.return_intermediate = return_intermediate
         self.num_layers = num_layers
         self.layer_cfg = layer_cfg
         self.num_cp = num_cp
         assert self.num_cp <= self.num_layers
+
+        self.use_can_bus = use_can_bus
+        self.can_bus_norm = can_bus_norm
+        self.num_cams = num_cams
+        self.use_cams_embeds = use_cams_embeds
+        self.bev_h = bev_h
+        self.bev_w = bev_w
+        self.positional_encoding = positional_encoding
+
+        # torchvision.transforms.functional.rotate expects center=(x, y) in pixel coords.
+        # If not provided, use the BEV feature map center for stability across bev_h/bev_w.
+        if rotate_center is None:
+            self.rotate_center = ((self.bev_w - 1) / 2.0, (self.bev_h - 1) / 2.0)
+        else:
+            assert len(rotate_center) == 2, 'rotate_center must be a 2-tuple/list: (x, y)'
+            self.rotate_center = (float(rotate_center[0]), float(rotate_center[1]))
+
         self._init_layers()
     
     def _init_layers(self) -> None:
@@ -47,6 +74,25 @@ class BEVFormerEncoder(BaseModule):
         ])
 
         self.embed_dims = self.layers[0].embed_dims
+        self.bev_embedding = nn.Embedding(
+                        self.bev_h * self.bev_w, self.embed_dims)
+
+        self.positional_encoding = MODELS.build(self.positional_encoding)
+
+
+        self.level_embeds = nn.Parameter(torch.Tensor(
+        self.num_feature_levels, self.embed_dims))
+        self.cams_embeds = nn.Parameter(
+            torch.Tensor(self.num_cams, self.embed_dims))
+
+        self.can_bus_mlp = nn.Sequential(
+            nn.Linear(18, self.embed_dims // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.embed_dims // 2, self.embed_dims),
+            nn.ReLU(inplace=True)
+        )
+        if self.can_bus_norm:
+            self.can_bus_mlp.add_module('norm', nn.LayerNorm(self.embed_dims))
     
     @staticmethod
     def get_reference_points(
@@ -97,7 +143,6 @@ class BEVFormerEncoder(BaseModule):
         for data_sample in batch_data_samples:
             lidar2img.append(copy.deepcopy(data_sample.metainfo['lidar2img']))
         lidar2img = np.asarray(lidar2img)
-        print(f'lidar2img: {lidar2img.shape}')
         lidar2img = reference_points.new_tensor(lidar2img) # (bs, num_cams, 4, 4)
         reference_points = reference_points.clone()
 
@@ -173,7 +218,124 @@ class BEVFormerEncoder(BaseModule):
         return reference_points_cam, bev_mask
 
 
-    def forward(self,
+    def forward(self, mlvl_feats, batch_data_samples, prev_bev) -> Tensor:
+        """
+        Args:
+
+        Returns:
+            bev_embedding: bev features after temporal self attn and spatial cross attn,
+                has shape (bs, bev_h*bev_w, embed_dims)
+        """
+
+        mlvl_feats = [feat[:, -1] for feat in mlvl_feats] # current frame
+
+        bs, num_cams, _, _, _ = mlvl_feats[0].shape
+    
+        bev_query = self.bev_embedding.weight # (bev_h*bev_w, embed_dims)
+        bev_mask = bev_query.new_zeros((bs, self.bev_h, self.bev_w)) 
+        bev_pos = self.positional_encoding(bev_mask) # (1, embed_dims, bev_h, bev_w)
+
+        # -> (bev_h*bev_w, bs, embed_dims)
+        bev_query = bev_query.unsqueeze(1).repeat(1, bs, 1)
+        # -> (bev_h*bev_w, 1, embed_dims)
+        bev_pos = bev_pos.flatten(2).permute(2, 0, 1)
+
+        # debug prints removed
+
+
+        # obtain rotation angle and shift with ego motion
+        delta_x = np.array([each.metainfo['can_bus'][0] for each in batch_data_samples])
+        delta_y = np.array([each.metainfo['can_bus'][1] for each in batch_data_samples])
+        # BEVFormer can_bus convention:
+        # - can_bus[-2]: absolute ego yaw in radians (used for shift direction)
+        # - can_bus[-1]: delta ego yaw in degrees (used for rotating prev_bev)
+        ego_angle = np.array(
+            [each.metainfo['can_bus'][-2] / np.pi * 180 for each in batch_data_samples])
+
+        # pc_range = [xmin, ymin, zmin, xmax, ymax, zmax]
+        grid_length_y = (self.pc_range[4] - self.pc_range[1]) / self.bev_h
+        grid_length_x = (self.pc_range[3] - self.pc_range[0]) / self.bev_w
+        translation_length = np.sqrt(delta_x**2 + delta_y**2)
+        translation_angle = np.arctan2(delta_y, delta_x) / np.pi * 180
+        bev_angle = ego_angle - translation_angle
+        shift_y = translation_length * np.cos(bev_angle / 180 * np.pi) / grid_length_y / self.bev_h
+        shift_x = translation_length * np.sin(bev_angle / 180 * np.pi) / grid_length_x / self.bev_w
+
+        shift = bev_query.new_tensor(
+            [shift_x, shift_y]).permute(1, 0)
+        
+        if prev_bev is not None:
+            if prev_bev.shape[1] == self.bev_h * self.bev_w:
+                # -> (bev_h*bev_w, bs, embed_dims)
+                prev_bev = prev_bev.permute(1, 0, 2)
+            for i in range(bs):
+                rotation_angle = batch_data_samples[i].metainfo['can_bus'][-1]
+                tmp_prev_bev = prev_bev[:, i].reshape(
+                    self.bev_h, self.bev_w, -1).permute(2, 0, 1)
+                # Guard against a misconfigured rotate_center (must lie within the BEV map).
+                if not (0.0 <= self.rotate_center[0] <= (self.bev_w - 1) and
+                        0.0 <= self.rotate_center[1] <= (self.bev_h - 1)):
+                    raise ValueError(
+                        f'rotate_center={self.rotate_center} is outside the BEV map '
+                        f'(bev_w={self.bev_w}, bev_h={self.bev_h}). '
+                        'Set rotate_center=None to use the BEV center, or pass a valid (x, y).'
+                    )
+                tmp_prev_bev = rotate(tmp_prev_bev, rotation_angle,
+                                      center=self.rotate_center)
+                tmp_prev_bev = tmp_prev_bev.permute(1, 2, 0).reshape(
+                    self.bev_h * self.bev_w, 1, -1)
+                prev_bev[:, i] = tmp_prev_bev[:, 0]
+
+        can_bus = bev_query.new_tensor(
+            [each.metainfo['can_bus'] for each in batch_data_samples])
+        can_bus = self.can_bus_mlp(can_bus)[None, :, :]
+
+        bev_query = bev_query + self.use_can_bus * can_bus
+
+        feat_flatten = []
+        spatial_shapes = []
+        for lvl, feat in enumerate(mlvl_feats):
+            bs, num_cams, C, H, W = feat.shape
+            spatial_shape = (H, W)
+            # -> (num_cams, bs, H*W, C)
+            feat = feat.flatten(3).permute(1, 0, 3, 2)
+            if self.use_cams_embeds:
+                feat = feat + self.cams_embeds[:, None, None, :]
+            feat = feat + self.level_embeds[None, None, lvl:lvl+1, :]
+            spatial_shapes.append(spatial_shape)
+            feat_flatten.append(feat)
+        
+        # -> (num_cams, sum(HW), bs, embed_dims)
+        feat_flatten = torch.cat(feat_flatten, 2)
+        feat_flatten = feat_flatten.permute(0, 2, 1, 3)
+
+        # -> (num_levels, 2）
+        spatial_shapes = bev_pos.new_tensor(spatial_shapes, dtype=torch.long)
+        level_sizes = spatial_shapes.prod(dim=1)
+        level_start_index = torch.cat([level_sizes.new_zeros(1), level_sizes.cumsum(0)[:-1]])
+
+
+
+        bev_embed = self._forward_encoder(
+            bev_query=bev_query,
+            key=feat_flatten,
+            value=feat_flatten,
+            bev_pos=bev_pos,
+            bev_h=self.bev_h,
+            bev_w=self.bev_w,
+            spatial_shapes=spatial_shapes,
+            level_start_index=level_start_index,
+            prev_bev=None,
+            shift=shift,
+            batch_data_samples=batch_data_samples)
+        
+
+        return {
+            "bev_embed": bev_embed
+        }
+
+
+    def _forward_encoder(self,
                 bev_query: Tensor,
                 key: Optional[Tensor],
                 value: Optional[Tensor],
@@ -277,7 +439,6 @@ class BEVFormerEncoder(BaseModule):
         return output
 
 
-@MODELS.register_module()
 class BEVFormerEncoderLayer(BaseModule):
 
     def __init__(self,
@@ -314,9 +475,9 @@ class BEVFormerEncoderLayer(BaseModule):
         self._init_layers()
     
     def _init_layers(self) -> None:
-        self.temporal_attn = TemporalSelfAttention(**self.temporal_attn_cfg)
+        self.temporal_attn = MODELS.build(self.temporal_attn_cfg)
         self.embed_dims = self.temporal_attn.embed_dims
-        self.spatial_cross_attn = SpatialCrossAttention(**self.spatial_cross_attn_cfg)
+        self.spatial_cross_attn = MODELS.build(self.spatial_cross_attn_cfg)
         self.ffn = FFN(**self.ffn_cfg)
         norms_list = [
             build_norm_layer(self.norm_cfg, self.embed_dims)[1]

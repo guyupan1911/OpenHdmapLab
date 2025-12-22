@@ -17,6 +17,7 @@ from .multi_scale_deformable_attn import (
 from mmhdmap.registry import MODELS
 
 
+@MODELS.register_module()
 class SpatialCrossAttention(BaseModule):
 
     def __init__(self,
@@ -120,6 +121,7 @@ class SpatialCrossAttention(BaseModule):
 
 
 
+@MODELS.register_module()
 class MSDeformableAttention3D(BaseModule):
 
     def __init__(self,

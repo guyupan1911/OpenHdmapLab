@@ -15,6 +15,7 @@ from mmdet.models.layers.transformer import inverse_sigmoid
 from mmhdmap.registry import MODELS
 
 
+@MODELS.register_module()
 class BEVFormerDecoder(BaseModule):
 
     def __init__(self,

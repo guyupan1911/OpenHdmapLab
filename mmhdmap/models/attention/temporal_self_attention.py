@@ -16,6 +16,7 @@ from .multi_scale_deformable_attn import (MultiScaleDeformableAttnFunction,
     multi_scale_deformable_attn_pytorch)
 
 
+@MODELS.register_module()
 class TemporalSelfAttention(BaseModule):
 
     def __init__(self,
