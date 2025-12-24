@@ -17,11 +17,7 @@ bev_w = 200
 
 model = dict(
     type='BEVFormer',
-    bev_h=bev_h,
-    bev_w=bev_w,
     video_test_mode=False,
-    with_box_refine=True,
-    pc_range=point_cloud_range,
     data_preprocessor=dict(
         type=TemporalDet3DDataPreprocessor,
         bgr_to_rgb=False,

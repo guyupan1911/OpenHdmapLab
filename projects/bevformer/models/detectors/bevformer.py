@@ -5,13 +5,13 @@ import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
+from torchvision.transforms.functional import rotate
 
 from .base import Base3DDetector
 from mmdet3d.structures.det3d_data_sample import (Det3DDataSample, SampleList,
                                                   OptSampleList, ForwardResults)
-from mmdet3d.utils.typing_utils import InstanceList
-from mmdet.utils import OptConfigType, ConfigType, OptMultiConfig
-from torchvision.transforms.functional import rotate
+from mmdet3d.utils.typing_utils import (InstanceList, OptConfigType, ConfigType,
+                                        OptMultiConfig)
 
 from mmhdmap.registry import MODELS
 
@@ -20,17 +20,14 @@ from mmhdmap.registry import MODELS
 class BEVFormer(Base3DDetector):
 
     def __init__(self,
-                 img_backbone: ConfigType,
+                 data_preprocessor: OptConfigType = None,
+                 img_backbone: OptConfigType = None,
                  img_neck: OptConfigType = None,
                  bev_encoder: OptConfigType = None,
                  bbox_head: OptConfigType = None,
-                 with_box_refine: bool = False,
-                 as_two_stage: bool = False,
-                 embed_dims: int = 256,
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  video_test_mode: bool = False,
-                 data_preprocessor: OptConfigType = None,
                  init_cfg: OptMultiConfig = None,
                  **kwargs) -> None:
         
@@ -38,15 +35,10 @@ class BEVFormer(Base3DDetector):
             data_preprocessor=data_preprocessor,
             init_cfg = init_cfg)
         
-        self.embed_dims = embed_dims
-  
         bbox_head.update(train_cfg=train_cfg)
         bbox_head.update(test_cfg=test_cfg)
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
-        self.bev_encoder = bev_encoder
-        self.with_box_refine = with_box_refine
-        self.as_two_stage = as_two_stage
 
         # TODO: use grid mask
 
@@ -59,17 +51,15 @@ class BEVFormer(Base3DDetector):
             'prev_angle': 0,
         }
 
-        # init layers
         self.img_backbone = MODELS.build(img_backbone)
+
         if img_neck is not None:
             self.img_neck = MODELS.build(img_neck)
-        self.bbox_head = MODELS.build(bbox_head)
-        self._init_layers()
-    
-    def _init_layers(self) -> None:
 
-        self.bev_encoder = MODELS.build(self.bev_encoder)
-            
+        self.bev_encoder = MODELS.build(bev_encoder)
+
+        self.bbox_head = MODELS.build(bbox_head)
+    
     def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
         """
         Args:
@@ -104,21 +94,7 @@ class BEVFormer(Base3DDetector):
     def loss(self,
                 batch_inputs: Tensor,
                 batch_data_samples: SampleList) -> Union[dict, tuple]:
-        """
-        Args:
-
-        Returns:
-            dict: A dictionary of loss component
-        """
-
-
-        img_feats = self.extract_img_feat(batch_inputs)
-        head_inputs_dict = self.forward_bev_encoder(img_feats,
-                                                    batch_data_samples)
-        losses = self.bbox_head.loss(
-            **head_inputs_dict, batch_data_samples=batch_data_samples)
-        
-        return losses
+        pass
         
     def predict(self,
                 batch_inputs: Tensor,
@@ -181,10 +157,6 @@ class BEVFormer(Base3DDetector):
     def _forward(self,
                  batch_inputs: Tensor,
                  batch_data_samples: OptSampleList = None):
-        img_feats = self.extract_img_feat(batch_inputs)
-        head_inputs_dict = self.forward_bev_encoder(img_feats,
-                                                    batch_data_samples)
-        results = self.bbox_head.forward(**head_inputs_dict)
-        return results
+        pass
 
 
