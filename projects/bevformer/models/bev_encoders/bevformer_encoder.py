@@ -39,7 +39,6 @@ class BEVFormerEncoder(BaseModule):
                  init_cfg: Optional[ConfigDict] = None) -> None:
 
         super().__init__(init_cfg=init_cfg)
-        self.fp16_enabled = False
         self.pc_range = pc_range
         self.num_feature_levels = num_feature_levels
         self.num_points_in_pillar = num_points_in_pillar
@@ -218,31 +217,19 @@ class BEVFormerEncoder(BaseModule):
         return reference_points_cam, bev_mask
 
 
-    def forward(self, mlvl_feats, batch_data_samples, prev_bev) -> Tensor:
-        """
-        Args:
-
-        Returns:
-            bev_embedding: bev features after temporal self attn and spatial cross attn,
-                has shape (bs, bev_h*bev_w, embed_dims)
-        """
-
-        mlvl_feats = [feat[:, -1] for feat in mlvl_feats] # current frame
-
-        bs, num_cams, _, _, _ = mlvl_feats[0].shape
+    def prepare_encoder(self, mlvl_feats, batch_data_samples, prev_bev):
     
-        bev_query = self.bev_embedding.weight # (bev_h*bev_w, embed_dims)
-        bev_mask = bev_query.new_zeros((bs, self.bev_h, self.bev_w)) 
-        bev_pos = self.positional_encoding(bev_mask) # (1, embed_dims, bev_h, bev_w)
+        bs, num_cams, _, _, _ = mlvl_feats[0].shape
+        
+        # prepare bev embed
+        bev_query = self.bev_embedding.weight
+        bev_mask = bev_query.new_zeros((bs, self.bev_h, self.bev_w))
+        bev_pos = self.positional_encoding(bev_mask)
 
-        # -> (bev_h*bev_w, bs, embed_dims)
         bev_query = bev_query.unsqueeze(1).repeat(1, bs, 1)
-        # -> (bev_h*bev_w, 1, embed_dims)
         bev_pos = bev_pos.flatten(2).permute(2, 0, 1)
 
-        # debug prints removed
-
-
+        # align prev_bev
         # obtain rotation angle and shift with ego motion
         delta_x = np.array([each.metainfo['can_bus'][0] for each in batch_data_samples])
         delta_y = np.array([each.metainfo['can_bus'][1] for each in batch_data_samples])
@@ -263,7 +250,7 @@ class BEVFormerEncoder(BaseModule):
 
         shift = bev_query.new_tensor(
             [shift_x, shift_y]).permute(1, 0)
-        
+
         if prev_bev is not None:
             if prev_bev.shape[1] == self.bev_h * self.bev_w:
                 # -> (bev_h*bev_w, bs, embed_dims)
@@ -286,12 +273,14 @@ class BEVFormerEncoder(BaseModule):
                     self.bev_h * self.bev_w, 1, -1)
                 prev_bev[:, i] = tmp_prev_bev[:, 0]
 
+        # use can bus
         can_bus = bev_query.new_tensor(
             [each.metainfo['can_bus'] for each in batch_data_samples])
         can_bus = self.can_bus_mlp(can_bus)[None, :, :]
 
         bev_query = bev_query + self.use_can_bus * can_bus
 
+        #
         feat_flatten = []
         spatial_shapes = []
         for lvl, feat in enumerate(mlvl_feats):
@@ -314,57 +303,8 @@ class BEVFormerEncoder(BaseModule):
         level_sizes = spatial_shapes.prod(dim=1)
         level_start_index = torch.cat([level_sizes.new_zeros(1), level_sizes.cumsum(0)[:-1]])
 
-
-
-        bev_embed = self._forward_encoder(
-            bev_query=bev_query,
-            key=feat_flatten,
-            value=feat_flatten,
-            bev_pos=bev_pos,
-            bev_h=self.bev_h,
-            bev_w=self.bev_w,
-            spatial_shapes=spatial_shapes,
-            level_start_index=level_start_index,
-            prev_bev=None,
-            shift=shift,
-            batch_data_samples=batch_data_samples)
-        
-
-        return {
-            "bev_embed": bev_embed
-        }
-
-
-    def _forward_encoder(self,
-                bev_query: Tensor,
-                key: Optional[Tensor],
-                value: Optional[Tensor],
-                bev_h: int,
-                bev_w: int,
-                bev_pos: Optional[Tensor],
-                spatial_shapes: Optional[Tensor],
-                level_start_index: Optional[Tensor],
-                valid_ratios: Optional[Tensor] = None,
-                prev_bev: Optional[Tensor] = None,
-                shift: Optional[Tensor] = None,
-                batch_data_samples = None,
-                **kwargs):
-        """
-        Args:
-            bev_query: (bev_h*bev_w, bs, embed_dims)
-            key: flattened_mlvl_feats, (num_cams, sum(HW), bs, embed_dims)
-            value: flattened_mlvl_feats, (num_cams, sum(HW), bs, embed_dims)
-            bev_pos: bev query positional embedding, (bev_h*bev_w, 1, embed_dims)
-
-        """
-
-        # enable fp16 where appropriate
-        # (decorator kept separate for clarity)
-        output = bev_query
-        intermediate = []
-
         ref_3d = self.get_reference_points(
-            bev_h, bev_w, self.pc_range[5] - self.pc_range[2],
+            self.bev_h, self.bev_w, self.pc_range[5] - self.pc_range[2],
             self.num_points_in_pillar,
             dim='3d',
             bs=bev_query.size(1),
@@ -373,7 +313,7 @@ class BEVFormerEncoder(BaseModule):
 
 
         ref_2d = self.get_reference_points(
-            bev_h, bev_w, dim='2d',
+            self.bev_h, self.bev_w, dim='2d',
             bs=bev_query.size(1),
             device=bev_query.device,
             dtype=bev_query.dtype)
@@ -385,8 +325,7 @@ class BEVFormerEncoder(BaseModule):
         shift_ref_2d = ref_2d.clone()
         if shift is not None:
             shift_ref_2d += shift[:, None, None, :]
-
-        # debug prints removed
+        
 
         # -> (bs, num_queries, embed_dims)
         bev_query = bev_query.permute(1, 0, 2)
@@ -406,27 +345,40 @@ class BEVFormerEncoder(BaseModule):
             hybrid_ref_2d = torch.stack([ref_2d, ref_2d], 1).reshape(
                 bs*2, num_queries, num_bev_level, 2)
 
-        # debug prints removed
+
+        return bev_query, bev_pos, hybrid_ref_2d, feat_flatten, spatial_shapes, level_start_index, bev_mask, reference_points_cam
 
 
+    def forward(self, mlvl_feats, batch_data_samples, prev_bev) -> Tensor:
+        """
+        Args:
 
+        Returns:
+            bev_embedding: bev features after temporal self attn and spatial cross attn,
+                has shape (bs, bev_h*bev_w, embed_dims)
+        """
+
+        outputs = self.prepare_encoder(mlvl_feats, batch_data_samples, prev_bev)
+        bev_query, bev_pos, hybrid_ref_2d, feat_flatten, spatial_shapes, level_start_index, bev_mask,
+            reference_points_cam = outputs
+    
+        output = bev_query
+        intermediate = []
 
         for lid, layer in enumerate(self.layers):
             output = layer(
                 query=bev_query,
-                key=key,
-                value=value,
+                key=feat_flatten,
+                value=feat_flatten,
                 bev_pos=bev_pos,
                 ref_2d=hybrid_ref_2d,
-                ref_3d=ref_3d,
-                bev_h=bev_h,
-                bev_w=bev_w,
+                bev_h=self.bev_h,
+                bev_w=self.bev_w,
                 spatial_shapes=spatial_shapes,
                 level_start_index=level_start_index,
                 reference_points_cam=reference_points_cam,
                 bev_mask=bev_mask,
-                prev_bev=prev_bev,
-                **kwargs)
+                prev_bev=prev_bev)
 
             bev_query = output
             if self.return_intermediate:
@@ -435,8 +387,9 @@ class BEVFormerEncoder(BaseModule):
         if self.return_intermediate:
             return torch.stack(intermediate)
         
-
-        return output
+        return {
+            "bev_embed": output
+        }
 
 
 class BEVFormerEncoderLayer(BaseModule):
@@ -496,7 +449,6 @@ class BEVFormerEncoderLayer(BaseModule):
                 query_key_padding_mask: Optional[Tensor] = None,
                 key_padding_mask: Optional[Tensor] = None,
                 ref_2d: Optional[Tensor] = None,
-                ref_3d: Optional[Tensor] = None,
                 bev_h: int = 200,
                 bev_w: int = 200,
                 reference_points_cam: Optional[Tensor] = None,

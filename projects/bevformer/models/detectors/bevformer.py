@@ -2,17 +2,14 @@ from typing import Optional, Union, List, Tuple, Dict, Sequence
 import copy
 
 import numpy as np
-import torch
 from torch import Tensor
-import torch.nn as nn
-from torchvision.transforms.functional import rotate
 
-from .base import Base3DDetector
 from mmdet3d.structures.det3d_data_sample import (Det3DDataSample, SampleList,
                                                   OptSampleList, ForwardResults)
 from mmdet3d.utils.typing_utils import (InstanceList, OptConfigType, ConfigType,
                                         OptMultiConfig)
 
+from .base import Base3DDetector
 from mmhdmap.registry import MODELS
 
 
@@ -60,7 +57,7 @@ class BEVFormer(Base3DDetector):
 
         self.bbox_head = MODELS.build(bbox_head)
     
-    def extract_img_feat(self, batch_inputs: Tensor) -> List[Tensor]:
+    def extract_img_feat(self, img: Tensor) -> List[Tensor]:
         """
         Args:
             batch_inputs (Tensor): Image tensor, has shape
@@ -71,25 +68,33 @@ class BEVFormer(Base3DDetector):
             List[Tensor]: Multi level feature maps, each has shape
                 (bs, T, num_cams, C_out, H, W)
         """
-        assert batch_inputs.dim() == 6
-        bs, T, num_cams, dim, H, W = batch_inputs.shape
-        batch_inputs = batch_inputs.view(bs * T * num_cams, dim, H, W)
+        if img is None:
+            return None
+        elif img.dim() == 6:
+            bs, T, num_cams, C, H, W = img.shape
+            img = img.view(bs * T * num_cams, C, H, W)
+        elif img.dim() == 5:
+            bs, num_cams, C, H, W = img.view(bs * num_cams, C, H, W)
 
-        x = self.img_backbone(batch_inputs)
+        if self.img_backbone is not None:
+            x = self.img_backbone(img)
         if self.img_neck is not None:
             img_feats = self.img_neck(x)
         
-        multi_level_img_feats = []
+        mlvl_img_feats = []
         for img_feat in img_feats:
             _, C, H, W = img_feat.shape
-            img_feat_reshape = img_feat.view(bs, T, num_cams, C, H, W)
-            multi_level_img_feats.append(img_feat_reshape)
+            img_feat_reshape = img_feat.view(bs, -1, num_cams, C, H, W)
+            mlvl_img_feats.append(img_feat_reshape)
         
-        return multi_level_img_feats
+        return mlvl_img_feats
 
     def extract_feat(self, batch_inputs_dict: dict):
-        assert 'imgs' in batch_inputs_dict
-        return self.extract_img_feat(batch_inputs_dict['imgs'])
+        
+        imgs = batch_inputs_dict.get('imgs', None)
+        mlvl_img_feats = self.extract_img_feat(imgs)
+        
+        return mlvl_img_feats
 
     def loss(self,
                 batch_inputs: Tensor,
@@ -135,8 +140,8 @@ class BEVFormer(Base3DDetector):
             batch_data_samples[0].metainfo['can_bus'][-1] = 0
         
 
-        # only use current frame
-        mlvl_img_feats = self.extract_feat(batch_inputs)
+        mlvl_temporal_img_feats = self.extract_feat(batch_inputs)
+        mlvl_img_feats = [feat[:, -1] for feat in mlvl_temporal_img_feats] # current frame
         
         bev_encoder_outputs = self.bev_encoder(
             mlvl_img_feats, batch_data_samples, prev_bev=self.prev_frame_info['prev_bev'])
