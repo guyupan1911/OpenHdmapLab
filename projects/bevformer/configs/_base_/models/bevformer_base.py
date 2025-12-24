@@ -1,4 +1,11 @@
-from projects.bevformer.models import (TemporalDet3DDataPreprocessor, NMSFreeCoder)
+from projects.bevformer.models import TemporalDet3DDataPreprocessor
+
+custom_imports = dict(
+    imports = [
+        'projects.bevformer.models',
+    ],
+    allow_failed_imports = False
+)
 
 dim = 256
 num_levels = 4
@@ -106,7 +113,7 @@ model = dict(
         loss_bbox=dict(type='L1Loss', loss_weight=0.25),
         loss_iou=dict(type='GIoULoss', loss_weight=0.0),
         bbox_coder=dict(
-            type=NMSFreeCoder,
+            type='NMSFreeCoder',
             post_center_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
             pc_range=point_cloud_range,
             max_num=300,

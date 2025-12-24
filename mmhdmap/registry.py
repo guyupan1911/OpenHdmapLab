@@ -20,8 +20,4 @@ TRANSFORMS = Registry('transform', parent=MMENGINE_TRANSFORMS, locations=['mmhdm
 
 TASK_UTILS = Registry('task util', parent=MMENGINE_TASK_UTILS, locations=['mmhdmap.models'])
 
-# manage visualizer
-VISUALIZERS = Registry(
-    'visualizer',
-    parent=MMENGINE_VISUALIZERS,
-    locations=['mmhdmap.visualization'])
+VISUALIZERS = Registry('visualizer', parent=MMENGINE_VISUALIZERS, locations=['mmhdmap.visualization'])

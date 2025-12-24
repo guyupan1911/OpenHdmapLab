@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from mmdet3d.models.detectors import Base3DDetector
+from .base import Base3DDetector
 from mmdet3d.structures.det3d_data_sample import (Det3DDataSample, SampleList,
                                                   OptSampleList, ForwardResults)
 from mmdet3d.utils.typing_utils import InstanceList

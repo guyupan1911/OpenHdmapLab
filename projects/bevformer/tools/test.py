@@ -393,8 +393,8 @@ def test_ckpt():
                                             out_file=f'work_dirs/test_ckpt/test_nuscenes_vis_{idx}.png',
                                             wait_time=-1)
 
-
             break
+            
 
 
 if __name__ == '__main__':
