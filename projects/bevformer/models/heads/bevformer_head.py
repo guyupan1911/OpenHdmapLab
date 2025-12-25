@@ -215,8 +215,7 @@ class BEVFormerHead(DETRHead):
         predictions = self.get_bboxes(preds_dicts, batch_sample_metas)
         
         return predictions
-
-    
+ 
     def get_bboxes(self, preds_dicts, batch_metainfos):
 
         preds_dicts = self.bbox_coder.decode(preds_dicts)
@@ -239,7 +238,6 @@ class BEVFormerHead(DETRHead):
             results_list.append(results)
         
         return results_list
-
 
 
         

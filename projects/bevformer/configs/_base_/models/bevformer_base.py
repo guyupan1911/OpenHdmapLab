@@ -82,6 +82,7 @@ model = dict(
         num_query=900,
         bev_h=bev_h,
         bev_w=bev_w,
+        with_box_refine=True,
         decoder=dict(
             type='BEVFormerDecoder',
             num_layers=6,
