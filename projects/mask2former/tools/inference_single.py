@@ -6,7 +6,7 @@ from mmengine.config import Config
 
 from mmhdmap.registry import MODELS
 
-from projects.mask2former.models.layers import MSDeformAttnPixelDecoder
+from projects.mask2former.models.layers import MSDeformAttnPixelDecoder, DetrTransformerDecoder
 
 def parse_args():
     parser = argparse.ArgumentParser(
