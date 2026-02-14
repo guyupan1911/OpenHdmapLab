@@ -65,41 +65,60 @@ default_scope = 'mmhdmap'
 #         init_cfg=None
 # )
 
+# model = dict(
+#     type='Mask2FormerHead',
+#     feat_channels=256,
+#     out_channels=256,
+#     num_things_classes=11,
+#     num_stuff_classes=1,
+#     num_queries=400,
+#     num_transformer_feat_level=3,
+#     loss_cls=dict(
+#         type='mmdet.CrossEntropyLoss',
+#         use_sigmoid=False,
+#         loss_weight=2.0,
+#         reduction='mean',
+#         class_weight=[1.0] * 11 + [0.1]),
+#     loss_mask=dict(
+#         type='mmdet.CrossEntropyLoss',
+#         use_sigmoid=True,
+#         reduction='mean',
+#         loss_weight=5.0),
+#     loss_dice=dict(
+#         type='mmdet.DiceLoss',
+#         use_sigmoid=True,
+#         activate=True,
+#         reduction='mean',
+#         naive_dice=True,
+#         eps=1.0,
+#         loss_weight=5.0),
+#     train_cfg=dict(
+#         assigner=dict(
+#             type='mmdet.HungarianAssigner',
+#             match_costs=[
+#                 dict(type='mmdet.ClassificationCost', weight=2.0),
+#                 dict(type='mmdet.CrossEntropyLossCost', weight=5.0, use_sigmoid=True),
+#                 dict(type='mmdet.DiceCost', weight=5.0, pred_act=True, eps=1.0)
+#             ]),
+#         sampler=dict(type='mmdet.MaskPseudoSampler')),
+#     test_cfg=dict(max_per_img=50),
+# )
+
 model = dict(
-    type='Mask2FormerHead',
-    feat_channels=256,
-    out_channels=256,
+    type='MaskFormerFusionHead',
     num_things_classes=11,
     num_stuff_classes=1,
-    num_queries=400,
-    num_transformer_feat_level=3,
-    loss_cls=dict(
-        type='mmdet.CrossEntropyLoss',
-        use_sigmoid=False,
-        loss_weight=2.0,
-        reduction='mean',
-        class_weight=[1.0] * 11 + [0.1]),
-    loss_mask=dict(
-        type='mmdet.CrossEntropyLoss',
-        use_sigmoid=True,
-        reduction='mean',
-        loss_weight=5.0),
-    loss_dice=dict(
-        type='mmdet.DiceLoss',
-        use_sigmoid=True,
-        activate=True,
-        reduction='mean',
-        naive_dice=True,
-        eps=1.0,
-        loss_weight=5.0),
-    train_cfg=dict(
-        assigner=dict(
-            type='mmdet.HungarianAssigner',
-            match_costs=[
-                dict(type='mmdet.ClassificationCost', weight=2.0),
-                dict(type='mmdet.CrossEntropyLossCost', weight=5.0, use_sigmoid=True),
-                dict(type='mmdet.DiceCost', weight=5.0, pred_act=True, eps=1.0)
-            ]),
-        sampler=dict(type='mmdet.MaskPseudoSampler')),
-    test_cfg=dict(max_per_img=50),
-)
+    loss_panoptic=None,
+    init_cfg=None,
+    test_cfg=dict(
+        panoptic_on=True,
+        # For now, the dataset does not support
+        # evaluating semantic segmentation metric.
+        semantic_on=False,
+        instance_on=True,
+        # max_per_image is for instance segmentation.
+        max_per_image=200,
+        iou_thr=0.8,
+        # In Mask2Former's panoptic postprocessing,
+        # it will filter mask area where score is less than 0.5 .
+        filter_low_score=True))

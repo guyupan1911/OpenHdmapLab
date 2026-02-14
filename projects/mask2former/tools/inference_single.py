@@ -8,6 +8,8 @@ from mmhdmap.registry import MODELS
 
 from projects.mask2former.models.layers import MSDeformAttnPixelDecoder, DetrTransformerDecoder
 
+from projects.mask2former.models.seg_heads import MaskFormerFusionHead
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='inference single frame')
