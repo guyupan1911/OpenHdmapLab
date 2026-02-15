@@ -35,6 +35,8 @@ def parse_args():
         description='inference single frame')
     parser.add_argument('--config', help='config file path')
     parser.add_argument('--checkpoint', help='checkpoint file')
+    parser.add_argument('--image_path', help='lossless_image')
+    parser.add_argument('--output_dir', help='output_dir')
 
     args = parser.parse_args()
     return args
@@ -52,8 +54,7 @@ def main():
     model.eval()
     model.cfg = cfg
 
-    img_path = 'data/mask2map/LosslessMap.jpg'
-    rgb_image = imread(img_path, channel_order='rgb')
+    rgb_image = imread(args.image_path, channel_order='rgb')
 
     test_pipeline = Compose([
         dict(type='mmdet.LoadImageFromNDArray', to_float32=True),
@@ -62,16 +63,15 @@ def main():
 
     full_result = inference_detector(model, rgb_image, test_pipeline)
 
-    print(full_result)
     
     visualizer = VISUALIZERS.build(cfg.visualizer)
     visualizer.dataset_meta = {
         'classes': DEFAULT_CLASSES,
         'palette': DEFAULT_PALETTE
     }
-    output_dir = 'data/mask2map/vis'
-    os.makedirs(output_dir, exist_ok=True)
-    out_file = os.path.join(output_dir, 'vis.png')
+    
+    os.makedirs(args.output_dir, exist_ok=True)
+    out_file = os.path.join(args.output_dir, 'segmentation.png')
     if hasattr(full_result, 'pred_instances'):
         del full_result.pred_instances
 
