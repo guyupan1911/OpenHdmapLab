@@ -167,7 +167,7 @@ class MSDeformAttnPixelDecoder(BaseModule):
             reference_points = self.point_generator.single_level_grid_priors(
                 feat.shape[-2:], level_idx, device=feat.device)
             # normalzie
-            factor = feat.new_tensor([[w, h]] * self.strides[level_idx])
+            factor = feat.new_tensor([[w, h]]) * self.strides[level_idx]
             reference_points = reference_points / factor
 
             feat_projected = feat_projected.flatten(2).permute(2, 0, 1)

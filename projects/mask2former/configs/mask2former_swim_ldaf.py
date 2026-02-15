@@ -190,3 +190,10 @@ model = dict(
 
     frozen_stages=['backbone', 'bev_neck', 'mask_stage'],
 )
+
+vis_backends = [dict(type='LocalVisBackend')]
+visualizer = dict(
+    type='DetLocalVisualizer',
+    vis_backends=vis_backends,
+    name='visualizer'
+)

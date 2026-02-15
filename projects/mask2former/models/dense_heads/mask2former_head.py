@@ -99,7 +99,7 @@ class Mask2FormerHead(BaseModule):
             mask_pred_results,
             size=(img_shape[0], img_shape[1]),
             mode='bilinear',
-            align_corner=False)
+            align_corners=False)
         
         return mask_cls_results, mask_pred_results
 
