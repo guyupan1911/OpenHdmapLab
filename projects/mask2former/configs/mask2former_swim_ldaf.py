@@ -1,5 +1,6 @@
 default_scope = 'mmhdmap'
 
+_dim_ = 256
 
 model = dict(
     type='Mask2Map',
@@ -39,8 +40,8 @@ model = dict(
     bev_neck=dict(
         type='MSDeformAttnPixelDecoder',
         in_channels=[96, 192, 384, 768],
-        feat_channels=256,
-        out_channels=256,
+        feat_channels=_dim_,
+        out_channels=_dim_,
         num_outs=3,
         norm_cfg=dict(type='GN', num_groups=32),
         act_cfg=dict(type='ReLU'),
@@ -51,7 +52,7 @@ model = dict(
                 type='BaseTransformerLayer',
                 attn_cfgs=dict(
                     type='MultiScaleDeformableAttention',
-                    embed_dims=256,
+                    embed_dims=_dim_,
                     num_heads=8,
                     num_levels=3,
                     num_points=4,
@@ -62,7 +63,7 @@ model = dict(
                     init_cfg=None),
                 ffn_cfgs=dict(
                     type='FFN',
-                    embed_dims=256,
+                    embed_dims=_dim_,
                     feedforward_channels=1024,
                     num_fcs=2,
                     ffn_drop=0.0,
@@ -81,14 +82,14 @@ model = dict(
                 type='DetrTransformerDecoderLayer',
                 attn_cfgs=dict(
                     type='MultiheadAttention',
-                    embed_dims=256,
+                    embed_dims=_dim_,
                     num_heads=8,
                     attn_drop=0.0,
                     proj_drop=0.0,
                     dropout_layer=None,
                     batch_first=False),
                 ffn_cfgs=dict(
-                    embed_dims=256,
+                    embed_dims=_dim_,
                     # feedforward_channels=_ffn_dim_,
                     feedforward_channels=2048,
                     num_fcs=2,
@@ -104,8 +105,8 @@ model = dict(
     ),
     mask_head=dict(
         type='Mask2FormerHead',
-        feat_channels=256,
-        out_channels=256,
+        feat_channels=_dim_,
+        out_channels=_dim_,
         num_things_classes=11,
         num_stuff_classes=1,
         num_queries=400,
@@ -162,18 +163,29 @@ model = dict(
     map_decoder=None,
     map_head=None,
 
-    # bbox_decoder=_bbox_decoder_cfg_,
-    # bbox_head=_bbox_head_cfg_,
+    bbox_decoder=None,
+    bbox_head=None,
 
-    # ldaf_head=_ldaf_head_cfg_,
+    ldaf_head=dict(
+        type='LDAFHead',
+        num_classes=5,
+        in_channels=256,
+        hidden_channels=256,
+        loss_ldaf=dict(
+            type='LDAFLoss',
+            loss_weight_dist=1.0,
+            loss_weight_angle=1.0,  # 1.0 for direction learning
+            distance_threshold=5.0 # 10 pixels at stride 1
+        )
+    ),
     # ldaf_postprocessor=_ldaf_postprocessor_,
-
+     
     map_query_generator=None,
     map_denoiser=None,
 
     positional_encoding=dict(
         type="mmdet.SinePositionalEncoding",
-        num_feats=256 // 2,
+        num_feats=_dim_ // 2,
         normalize=True
     ),
 
@@ -183,7 +195,7 @@ model = dict(
     train_cfg=dict(
         task_mode='multi_modal',
     ),
-    
+      
     test_cfg=dict(
         inference_tasks=['mask', 'bbox'],
     ),
