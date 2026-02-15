@@ -193,7 +193,7 @@ model = dict(
 
 vis_backends = [dict(type='LocalVisBackend')]
 visualizer = dict(
-    type='DetLocalVisualizer',
+    type='RotLocalVisualizer',
     vis_backends=vis_backends,
     name='visualizer'
 )

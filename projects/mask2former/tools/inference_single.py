@@ -11,11 +11,12 @@ from mmengine.dataset import Compose
 
 from mmcv import imread
 
-from mmhdmap.registry import MODELS
 from mmdet.apis import inference_detector
-from mmdet.registry import VISUALIZERS
+from mmhdmap.registry import MODELS
+from mmhdmap.registry import VISUALIZERS
 
 from projects.mask2former.models.detectors import Mask2Map
+from projects.mask2former.visualization import RotLocalVisualizer
 
 DEFAULT_CLASSES = (
     "dotted lane", "solid lane", "curb", "fence", "crosswalk", "junction",
@@ -61,15 +62,18 @@ def main():
 
     full_result = inference_detector(model, rgb_image, test_pipeline)
 
+    print(full_result)
     
     visualizer = VISUALIZERS.build(cfg.visualizer)
     visualizer.dataset_meta = {
-            'classes': DEFAULT_CLASSES,
-            'palette': DEFAULT_PALETTE
+        'classes': DEFAULT_CLASSES,
+        'palette': DEFAULT_PALETTE
     }
     output_dir = 'data/mask2map/vis'
     os.makedirs(output_dir, exist_ok=True)
     out_file = os.path.join(output_dir, 'vis.png')
+    if hasattr(full_result, 'pred_instances'):
+        del full_result.pred_instances
 
     visualizer.add_datasample(
         'full_output',
