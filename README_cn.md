@@ -38,5 +38,8 @@ python projects/mask2former/tools/inference_single.py \
   --output_dir projects/mask2former/tools/
 ```
 
-## Results
-![segmentation_result](projects/mask2former/tools/segmentation.png)
+## Segmentation Result
+![segmentation_result](assets/segmentation_preview.png)
+
+## Skeletonizer Result
+![polylines](assets/polylines.png)

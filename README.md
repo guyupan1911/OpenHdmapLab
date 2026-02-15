@@ -39,4 +39,4 @@ python projects/mask2former/tools/inference_single.py \
 ```
 
 ## Results
-![segmentation_result](projects/mask2former/tools/segmentation.png)
+![segmentation_result](assets/segmentation_preview.png)
