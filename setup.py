@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 setup(
     name="mmhdmap",                
     version="0.1.0",                
-    author="Your Name",             
-    author_email="you@example.com",  
+    author="guyupan",             
+    author_email="guyupan1911@gmail.com",  
     description="A simple example", 
     packages=find_packages(),        
     install_requires=[              
