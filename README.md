@@ -41,3 +41,4 @@ python projects/mask2former/tools/inference_single.py \
 ## Segmentation Result
 ![segmentation_result](assets/segmentation_preview.png)
 
+test push
