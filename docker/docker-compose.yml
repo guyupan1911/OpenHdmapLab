@@ -21,7 +21,8 @@ services:
     user: "${UID}:${GID}"
 
     volumes:
-      - ..:/workspace  # Mount project root to /workspace
+      - ..:/workspace/mmhdmap  # Mount project root to /workspace
+      - /mnt/intel/jupyterhub/guyupan/:/workspace/data
 
     # GPU support
     deploy:
