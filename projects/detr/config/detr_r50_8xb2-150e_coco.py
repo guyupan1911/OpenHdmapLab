@@ -1,6 +1,6 @@
 auto_scale_lr = dict(base_batch_size=16)
 backend_args = None
-data_root = '/workspace/data/coco/'
+data_root = '/workspace/data/datasets/coco/'
 dataset_type = 'CocoDataset'
 default_hooks = dict(
     checkpoint=dict(interval=1, type='CheckpointHook'),
