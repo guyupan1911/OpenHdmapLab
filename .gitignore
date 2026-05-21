@@ -125,4 +125,5 @@ ckpts/
 *.sh~
 
 experiments/
-  
+
+.claude/

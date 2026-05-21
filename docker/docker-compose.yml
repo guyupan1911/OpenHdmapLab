@@ -1,0 +1,33 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host  # Use host network during build to inherit proxy settings
+      args:
+          http_proxy: ${http_proxy}
+          https_proxy: ${https_proxy}
+          no_proxy: ${no_proxy}
+    image: mmhdmap-dev:latest
+
+    container_name: mmhdmap-dev
+
+    # Use host network to inherit host's network configuration
+    network_mode: "host"
+
+    stdin_open: true
+    tty: true
+
+    user: "${UID}:${GID}"
+
+    volumes:
+      - ..:/workspace  # Mount project root to /workspace
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all  # Use all available GPUs
+              capabilities: [gpu]
