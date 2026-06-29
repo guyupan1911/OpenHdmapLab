@@ -4,11 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       network: host  # Use host network during build to inherit proxy settings
-      args:
-          http_proxy: ${http_proxy}
-          https_proxy: ${https_proxy}
-          no_proxy: ${no_proxy}
-    image: mmhdmap-dev:latest
+
+    image: docker.pluscn.cn:5050/plusai/mmhdmap-dev:latest
 
     container_name: mmhdmap-dev
 
@@ -18,11 +15,11 @@ services:
     stdin_open: true
     tty: true
 
-    user: "${UID}:${GID}"
+    user: "root"
 
     volumes:
       - ..:/workspace/mmhdmap  # Mount project root to /workspace
-      - /mnt/intel/jupyterhub/guyupan/:/workspace/data
+      - /mnt/intel/jupyterhub/guyupan/gpu:/workspace/data
 
     # GPU support
     deploy:

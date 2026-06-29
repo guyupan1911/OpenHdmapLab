@@ -1,13 +1,5 @@
 FROM pytorch/pytorch:2.1.2-cuda11.8-cudnn8-devel
 
-ARG http_proxy
-ARG https_proxy
-ARG no_proxy
-
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
-ENV no_proxy=${no_proxy}
-
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -35,11 +27,11 @@ RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 RUN pip install -U openmim --no-cache-dir
 
 # Install OpenMMLab packages
-RUN mim install mmengine
+RUN pip install -U "numpy==1.26.4" "python-lzf==0.2.6"
+RUN mim install "mmengine==0.10.7"
 RUN mim install "mmcv==2.1.0"
 RUN mim install "mmdet==3.3.0"
-
-RUN pip install -U numpy==1.26.4
+RUN mim install "mmdet3d==1.4.0"
 
 # TODO: Add more OpenMMLab packages if needed
 # Example:

@@ -127,3 +127,5 @@ ckpts/
 experiments/
 
 .claude/
+
+results/
