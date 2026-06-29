@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
       network: host  # Use host network during build to inherit proxy settings
 
-    image: docker.pluscn.cn:5050/plusai/mmhdmap-dev:latest
+    image: mmhdmap-dev:latest
 
     container_name: mmhdmap-dev
 
@@ -19,7 +19,7 @@ services:
 
     volumes:
       - ..:/workspace/mmhdmap  # Mount project root to /workspace
-      - /mnt/intel/jupyterhub/guyupan/gpu:/workspace/data
+      # - /mnt/intel/jupyterhub/guyupan/gpu:/workspace/data
 
     # GPU support
     deploy:

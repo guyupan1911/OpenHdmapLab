@@ -1,0 +1,42 @@
+# Basic
+numpy==1.26.4
+scipy==1.11.4
+pandas==2.2.2
+matplotlib==3.8.4
+seaborn==0.13.2
+tqdm==4.66.5
+pyyaml==6.0.2
+addict==2.4.0
+yapf==0.40.1
+termcolor==2.4.0
+rich==13.7.1
+packaging==24.1
+setuptools==69.5.1
+wheel==0.43.0
+ninja==1.11.1.1
+cython==3.0.10
+python-lzf==0.2.6
+
+# Image / geometry
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+imageio==2.35.1
+scikit-image==0.24.0
+shapely==2.0.5
+pyquaternion==0.9.9
+einops==0.8.0
+timm==1.0.8
+tensorboard==2.17.1
+
+# Point cloud / 3D core
+trimesh==4.4.9
+numba==0.60.0
+llvmlite==0.43.0
+plyfile==1.1
+laspy==2.5.4
+
+# Dataset helpers used by OpenMMLab configs/tools
+pycocotools==2.0.8
+pyarrow==16.1.0
+polars==1.5.0
+scikit-learn==1.5.1
