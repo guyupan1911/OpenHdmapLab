@@ -21,7 +21,7 @@ fi
 echo "▶️  Starting container..."
 echo "   Docker Compose will use the existing image or build when it needs to."
 
-docker compose -f "$COMPOSE_FILE" up -d
+docker compose -f "$COMPOSE_FILE" up -d --build
 
 echo ""
 echo "✅ Container started successfully"
