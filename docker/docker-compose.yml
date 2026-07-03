@@ -1,3 +1,5 @@
+name: mmhdmap
+
 services:
   dev:
     build:
@@ -17,9 +19,13 @@ services:
 
     user: "root"
 
+    environment:
+      TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD: "1"
+
     volumes:
       - ..:/workspace/mmhdmap  # Mount project root to /workspace
-      # - /mnt/intel/jupyterhub/guyupan/gpu:/workspace/data
+      # - /team/shared:/team/shared
+      - /data/guyupan/gpu:/data/guyupan/gpu
 
     # GPU support
     deploy:

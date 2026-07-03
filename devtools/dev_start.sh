@@ -6,22 +6,28 @@ cd "$(dirname "$0")/.."
 
 COMPOSE_FILE="docker/docker-compose.yml"
 
+BUILD_IMAGE=false
+if [[ "${1:-}" == "--build" ]]; then
+    BUILD_IMAGE=true
+elif [[ -n "${1:-}" ]]; then
+    echo "Usage: $0 [--build]"
+    exit 1
+fi
+
 echo "🚀 Starting development container..."
 echo ""
 
-# Check current container status
-if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
-    echo "📦 Container is already running"
-    echo ""
-    echo "💡 To enter the container:"
-    echo "   ./dev_into.sh"
-    exit 0
+compose_args=(up -d)
+if [[ "$BUILD_IMAGE" == "true" ]]; then
+    compose_args+=(--build)
+    echo "▶️  Building image and starting container..."
+else
+    echo "▶️  Starting container..."
+    echo "   Docker Compose will recreate the container if docker-compose.yml changed."
+    echo "   It will only build the image when the configured image is missing."
 fi
 
-echo "▶️  Starting container..."
-echo "   Docker Compose will use the existing image or build when it needs to."
-
-docker compose -f "$COMPOSE_FILE" up -d --build
+docker compose -f "$COMPOSE_FILE" "${compose_args[@]}"
 
 echo ""
 echo "✅ Container started successfully"
