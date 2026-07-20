@@ -25,7 +25,7 @@ services:
     volumes:
       - ..:/workspace/mmhdmap  # Mount project root to /workspace
       # - /team/shared:/team/shared
-      - /data/guyupan/gpu:/data/guyupan/gpu
+      - /home/guyu/data:/data
 
     # GPU support
     deploy:
